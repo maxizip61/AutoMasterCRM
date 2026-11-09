@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="status_body">#1565C0</color>
+    <color name="status_prep">#EF6C00</color>
+    <color name="status_paint">#C62828</color>
+    <color name="status_free">#2E7D32</color>
+    <color name="status_waiting">#757575</color>
+    <color name="status_overdue">#D32F2F</color>
+</resources>

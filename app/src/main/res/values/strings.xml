@@ -1,0 +1,26 @@
+<resources>
+    <string name="app_name">Автомастер</string>
+
+    <!-- Statuses -->
+    <string name="status_accepted">Принят</string>
+    <string name="status_waiting">Ожидает</string>
+    <string name="status_body">Кузовные</string>
+    <string name="status_prep">Подготовка</string>
+    <string name="status_paint">Покраска</string>
+    <string name="status_issue">К выдаче</string>
+    <string name="status_done">Выдан</string>
+    <string name="status_cancelled">Отменен</string>
+
+    <!-- Units -->
+    <string name="unit_pcs">шт</string>
+    <string name="unit_liter">л</string>
+    <string name="unit_kg">кг</string>
+    <string name="unit_meter">м</string>
+    <string name="unit_set">компл</string>
+
+    <!-- Common Actions -->
+    <string name="action_save">Сохранить</string>
+    <string name="action_cancel">Отмена</string>
+    <string name="action_delete">Удалить</string>
+    <string name="action_add">Добавить</string>
+</resources>
