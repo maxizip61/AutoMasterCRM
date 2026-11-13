@@ -21,6 +21,7 @@ interface CarDao {
     @Query("SELECT * FROM cars WHERE vin = :vin LIMIT 1")
     suspend fun getByVin(vin: String): CarEntity?
 
-    @Query("SELECT * FROM cars WHERE vin LIKE '%' || :query || '%' OR licensePlateSearchIndex LIKE '%' || :query || '%'")
+    // Оптимизированный поиск: использует индекс, ищет совпадение с начала строки
+    @Query("SELECT * FROM cars WHERE vin LIKE :query || '%' OR licensePlateSearchIndex LIKE :query || '%' ORDER BY vin ASC")
     fun search(query: String): Flow<List<CarEntity>>
 }

@@ -7,8 +7,17 @@ import java.time.Instant
 
 @Dao
 interface SalaryPaymentDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.ABORT) // Оставляем ABORT из Блока 1
     suspend fun insert(payment: SalaryPaymentEntity): Long
+
+    @Update
+    suspend fun update(payment: SalaryPaymentEntity)
+
+    @Delete
+    suspend fun delete(payment: SalaryPaymentEntity)
+
+    @Query("SELECT * FROM salary_payments WHERE id = :id")
+    suspend fun getById(id: Long): SalaryPaymentEntity?
 
     @Query("SELECT * FROM salary_payments WHERE employeeId = :employeeId ORDER BY date DESC")
     fun getByEmployee(employeeId: Long): Flow<List<SalaryPaymentEntity>>
@@ -17,8 +26,8 @@ interface SalaryPaymentDao {
     fun getAll(): Flow<List<SalaryPaymentEntity>>
 
     @Query("SELECT SUM(amountCents) FROM salary_payments WHERE date >= :from AND date <= :to")
-    suspend fun getTotalInRange(from: java.time.Instant, to: java.time.Instant): Long?
+    suspend fun getTotalInRange(from: Instant, to: Instant): Long?
 
     @Query("SELECT SUM(amountCents) FROM salary_payments WHERE employeeId = :employeeId AND date >= :from AND date <= :to")
-    suspend fun getPaidForEmployee(employeeId: Long, from: java.time.Instant, to: java.time.Instant): Long?
+    suspend fun getPaidForEmployee(employeeId: Long, from: Instant, to: Instant): Long?
 }

@@ -34,4 +34,7 @@ interface OrderDao {
 
     @Query("SELECT * FROM orders WHERE closedAt >= :from AND closedAt <= :to")
     suspend fun getClosedOrdersInRange(from: java.time.Instant, to: java.time.Instant): List<ru.automaster.app.data.local.entity.OrderEntity>
+
+    @Query("DELETE FROM orders WHERE id = :orderId")
+    suspend fun deleteOrderById(orderId: Long)
 }

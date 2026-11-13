@@ -8,7 +8,7 @@ import java.time.Instant
 data class FileDeletionTaskEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val filePath: String,
-    val attempts: Int = 0,
-    val lastAttemptAt: Instant? = null,
+    val attempts: Int = 0,          // <-- НОВОЕ ПОЛЕ
+    val lastError: String? = null,  // <-- НОВОЕ ПОЛЕ
     val createdAt: Instant
 )

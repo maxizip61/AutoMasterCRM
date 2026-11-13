@@ -10,5 +10,8 @@ import ru.automaster.app.domain.model.PostType
 data class PostEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: PostName,
-    val type: PostType
+    val type: PostType,
+    val displayName: String = "", // <-- НОВОЕ ПОЛЕ
+    val isActive: Boolean = true, // <-- НОВОЕ ПОЛЕ
+    val sortOrder: Int = 0        // <-- НОВОЕ ПОЛЕ
 )

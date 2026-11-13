@@ -9,6 +9,8 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import ru.automaster.app.ui.screens.settings.SettingsScreen
+import ru.automaster.app.ui.screens.settings.BackupScreen
 import ru.automaster.app.ui.screens.dashboard.DashboardScreen
 import ru.automaster.app.ui.screens.finance.FinanceScreen
 import ru.automaster.app.ui.screens.order_detail.OrderDetailsScreen
@@ -62,7 +64,15 @@ fun AppNavHost(
         composable(Screen.Finance.route) { FinanceScreen() }
         composable(Screen.Tax.route) { TaxScreen() }
         composable(Screen.Payroll.route) { PayrollScreen() }
-        composable(Screen.Settings.route) { SettingsScreen() }
+        composable(Screen.Settings.route) {
+            SettingsScreen(
+                onNavigateToBackup = { navController.navigate(Screen.Backup.route) }
+            )
+        }
+
+        composable(Screen.Backup.route) {
+            BackupScreen(onNavigateBack = { navController.popBackStack() })
+        }
 
         composable(Screen.AddOrder.route) {
             AddOrderScreen(onNavigateBack = { navController.popBackStack() })

@@ -7,7 +7,7 @@ import java.time.Instant
 
 @Dao
 interface TaxPaymentDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(payment: TaxPaymentEntity): Long
 
     @Query("SELECT * FROM tax_payments ORDER BY date DESC")

@@ -1,5 +1,6 @@
 package ru.automaster.app.ui.screens.order_detail
 
+import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -8,7 +9,9 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import ru.automaster.app.data.local.dao.*
 import ru.automaster.app.data.local.entity.*
+import ru.automaster.app.data.storage.PhotoFileManager
 import ru.automaster.app.domain.model.*
+import java.io.File
 import java.time.Instant
 import java.util.UUID
 import javax.inject.Inject
@@ -22,6 +25,7 @@ data class OrderDetailsUiState(
     val expenses: List<ExpenseEntity> = emptyList(),
     val employees: List<EmployeeEntity> = emptyList(),
     val accruals: List<OrderEmployeeAccrualEntity> = emptyList(),
+    val photos: List<PhotoEntity> = emptyList(),
     val isLoading: Boolean = true
 )
 
@@ -37,10 +41,15 @@ class OrderDetailsViewModel @Inject constructor(
     private val expenseDao: ExpenseDao,
     private val employeeDao: EmployeeDao,
     private val accrualDao: OrderEmployeeAccrualDao,
+    private val photoDao: PhotoDao,
+    private val photoFileManager: PhotoFileManager,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
     private val orderId: Long = checkNotNull(savedStateHandle["orderId"])
+
+    private var currentPhotoUri: Uri? = null
+    private var currentPhotoFile: File? = null
 
     val uiState: StateFlow<OrderDetailsUiState> = combine(
         orderDao.getByIdFlow(orderId),
@@ -48,7 +57,8 @@ class OrderDetailsViewModel @Inject constructor(
         paymentDao.getByOrder(orderId),
         expenseDao.getByOrder(orderId),
         employeeDao.getActive(),
-        accrualDao.getByOrder(orderId)
+        accrualDao.getByOrder(orderId),
+        photoDao.getByOrder(orderId)
     ) { args ->
         val order = args[0] as OrderEntity?
         @Suppress("UNCHECKED_CAST")
@@ -61,11 +71,24 @@ class OrderDetailsViewModel @Inject constructor(
         val employees = args[4] as List<EmployeeEntity>
         @Suppress("UNCHECKED_CAST")
         val accruals = args[5] as List<OrderEmployeeAccrualEntity>
+        @Suppress("UNCHECKED_CAST")
+        val photos = args[6] as List<PhotoEntity>
 
         if (order != null) {
             val client = clientDao.getById(order.clientId)
             val car = carDao.getById(order.carId)
-            OrderDetailsUiState(order, client, car, posts, payments, expenses, employees, accruals, isLoading = false)
+            OrderDetailsUiState(
+                order = order,
+                client = client,
+                car = car,
+                posts = posts,
+                payments = payments,
+                expenses = expenses,
+                employees = employees,
+                accruals = accruals,
+                photos = photos,
+                isLoading = false
+            )
         } else {
             OrderDetailsUiState(isLoading = false)
         }
@@ -143,14 +166,11 @@ class OrderDetailsViewModel @Inject constructor(
         viewModelScope.launch {
             val order = uiState.value.order ?: return@launch
 
-            var finalAmountCents = 0L
-
-            if (employee.compensationType == "PERCENT") {
-                // Считаем процент от сметы заказа
-                finalAmountCents = (order.agreedEstimateCents * employee.rateValue) / 100
+            // ИСПРАВЛЕНО: Используем if-else как выражение, без var и без повторного присваивания
+            val finalAmountCents = if (employee.compensationType == "PERCENT") {
+                (order.agreedEstimateCents * employee.rateValue) / 100
             } else {
-                // Считаем фикс за количество деталей
-                finalAmountCents = (employee.rateValue * panelsCount) * 100
+                (employee.rateValue * panelsCount) * 100
             }
 
             accrualDao.insert(
@@ -164,5 +184,31 @@ class OrderDetailsViewModel @Inject constructor(
                 )
             )
         }
+    }
+
+    fun prepareCameraUri(orderId: Long): Uri {
+        val file = photoFileManager.createImageFile(orderId)
+        currentPhotoFile = file
+        val uri = photoFileManager.getUriForFile(file)
+        currentPhotoUri = uri
+        return uri
+    }
+
+    fun savePhotoToDb(orderId: Long, isSuccess: Boolean, type: PhotoType = PhotoType.BEFORE) {
+        if (isSuccess && currentPhotoFile != null) {
+            viewModelScope.launch {
+                val relativePath = currentPhotoFile!!.absolutePath.substringAfter("files/")
+                photoDao.insert(
+                    PhotoEntity(
+                        orderId = orderId,
+                        type = type,
+                        filePath = relativePath,
+                        createdAt = Instant.now()
+                    )
+                )
+            }
+        }
+        currentPhotoFile = null
+        currentPhotoUri = null
     }
 }

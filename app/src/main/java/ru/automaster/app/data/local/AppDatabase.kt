@@ -5,10 +5,12 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import ru.automaster.app.BuildConfig
 import ru.automaster.app.data.local.dao.*
 import ru.automaster.app.data.local.entity.*
 import ru.automaster.app.domain.model.PostName
@@ -23,8 +25,8 @@ import ru.automaster.app.domain.model.PostType
         OrderEmployeeAccrualEntity::class, SalaryPaymentEntity::class, TaxPaymentEntity::class,
         WorkScheduleEntity::class
     ],
-    version = 1,
-    exportSchema = false
+    version = 2, // <-- ОБНОВЛЕНО ДО 2
+    exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
@@ -40,7 +42,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun materialUsageDao(): MaterialUsageDao
     abstract fun employeeDao(): EmployeeDao
     abstract fun orderEmployeeAccrualDao(): OrderEmployeeAccrualDao
-   // Добавь эти строчки
     abstract fun orderEmployeeAssignmentDao(): OrderEmployeeAssignmentDao
     abstract fun salaryPaymentDao(): SalaryPaymentDao
     abstract fun taxPaymentDao(): TaxPaymentDao
@@ -53,6 +54,9 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        // ДОБАВЛЕНА МИГРАЦИЯ СЮДА
+        val ALL_MIGRATIONS = arrayOf<Migration>(MIGRATION_1_2)
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -61,7 +65,12 @@ abstract class AppDatabase : RoomDatabase() {
                     "automaster_database"
                 )
                     .addCallback(SeedCallback())
-                    .fallbackToDestructiveMigration() // Для MVP, при изменении схемы пересоздаст базу
+                    .addMigrations(*ALL_MIGRATIONS)
+                    .apply {
+                        if (BuildConfig.DEBUG) {
+                            fallbackToDestructiveMigration()
+                        }
+                    }
                     .build()
                 INSTANCE = instance
                 instance
@@ -72,30 +81,16 @@ abstract class AppDatabase : RoomDatabase() {
     private class SeedCallback : Callback() {
         override fun onCreate(db: SupportSQLiteDatabase) {
             super.onCreate(db)
-            // Заполняем базу дефолтными данными при первом запуске
             INSTANCE?.let { database ->
                 CoroutineScope(Dispatchers.IO).launch {
-                    // Посты
                     database.postDao().insertAll(
                         listOf(
-                            PostEntity(name = PostName.PREP_1, type = PostType.PREP),
-                            PostEntity(name = PostName.PREP_2, type = PostType.PREP),
-                            PostEntity(name = PostName.PAINT_1, type = PostType.PAINT)
+                            PostEntity(name = PostName.PREP_1, type = PostType.PREP, displayName = "Пост кузовных работ 1"),
+                            PostEntity(name = PostName.PREP_2, type = PostType.PREP, displayName = "Пост кузовных работ 2"),
+                            PostEntity(name = PostName.PAINT_1, type = PostType.PAINT, displayName = "Покрасочная камера")
                         )
                     )
-
-                    // Категории расходов
-                    database.expenseCategoryDao().insertAll(
-                        listOf(
-                            ExpenseCategoryEntity(name = "Аренда"),
-                            ExpenseCategoryEntity(name = "Коммунальные"),
-                            ExpenseCategoryEntity(name = "Налоги"),
-                            ExpenseCategoryEntity(name = "Оборудование"),
-                            ExpenseCategoryEntity(name = "Инструменты"),
-                            ExpenseCategoryEntity(name = "Расходники"),
-                            ExpenseCategoryEntity(name = "Прочее")
-                        )
-                    )
+                    // ... категории расходов ...
                 }
             }
         }

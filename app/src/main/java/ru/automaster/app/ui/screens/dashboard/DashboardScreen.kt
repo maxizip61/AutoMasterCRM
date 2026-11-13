@@ -1,8 +1,6 @@
 package ru.automaster.app.ui.screens.dashboard
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -10,25 +8,23 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import ru.automaster.app.R
 import ru.automaster.app.ui.components.MoneyFormatter
+import ru.automaster.app.ui.components.PremiumGlassBackground
 import ru.automaster.app.ui.components.ResourceCard
+import ru.automaster.app.ui.components.glassCard
 import ru.automaster.app.ui.theme.GraphiteDark
 import ru.automaster.app.ui.theme.IndigoPrimary
 
@@ -41,25 +37,7 @@ fun DashboardScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        // 1. ФОН: Размытая картинка машины (Убедись, что bg_car.jpg есть в res/drawable)
-        Image(
-            painter = painterResource(id = R.drawable.bg_car),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxSize()
-                .blur(16.dp)
-        )
-
-        // 2. ОВЕРЛЕЙ: Затемнение
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(GraphiteDark.copy(alpha = 0.75f))
-        )
-
-        // 3. КОНТЕНТ
+    PremiumGlassBackground {
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
@@ -80,7 +58,7 @@ fun DashboardScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // Блок 1: Касса дня
-                item {
+                item(key = "cash_box") {
                     Box(
                         modifier = Modifier
                             .padding(horizontal = 16.dp)
@@ -115,35 +93,33 @@ fun DashboardScreen(
                 }
 
                 // Блок 2: Посты
-                item {
+                item(key = "posts_title") {
                     Text("Посты", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(horizontal = 16.dp))
                 }
-                item {
+                item(key = "posts_row") {
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        items(state.posts) { postState ->
+                        items(state.posts, key = { it.post.id }) { postState ->
                             ResourceCard(postState = postState, modifier = Modifier.width(280.dp))
                         }
                     }
                 }
 
                 // Блок 3: В работе
-                item {
+                item(key = "in_work_title") {
                     Text("В работе (${state.inWorkOrders.size})", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(horizontal = 16.dp))
                 }
                 if (state.inWorkOrders.isEmpty()) {
-                    item { Text("Нет машин в работе", color = Color.Gray, modifier = Modifier.padding(horizontal = 16.dp)) }
+                    item(key = "in_work_empty") { Text("Нет машин в работе", color = Color.Gray, modifier = Modifier.padding(horizontal = 16.dp)) }
                 } else {
-                    items(state.inWorkOrders) { order ->
+                    items(state.inWorkOrders, key = { it.id }) { order ->
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(Color(0x1AFFFFFF))
-                                .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(16.dp))
+                                .glassCard()
                                 .clickable { onNavigateToOrderDetails(order.id) }
                                 .padding(16.dp)
                         ) {
@@ -152,27 +128,25 @@ fun DashboardScreen(
                                     Text("Заказ #${order.id}", fontWeight = FontWeight.Bold, color = Color.White)
                                     Text("Статус: ${order.status.name}", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
                                 }
-                                Icon(Icons.Default.ArrowForward, contentDescription = null, tint = Color.White)
+                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color.White)
                             }
                         }
                     }
                 }
 
                 // Блок 4: Ожидают
-                item {
+                item(key = "waiting_title") {
                     Text("Ожидают (${state.waitingOrders.size})", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(horizontal = 16.dp))
                 }
                 if (state.waitingOrders.isEmpty()) {
-                    item { Text("Нет ожидающих машин", color = Color.Gray, modifier = Modifier.padding(horizontal = 16.dp)) }
+                    item(key = "waiting_empty") { Text("Нет ожидающих машин", color = Color.Gray, modifier = Modifier.padding(horizontal = 16.dp)) }
                 } else {
-                    items(state.waitingOrders) { order ->
+                    items(state.waitingOrders, key = { it.id }) { order ->
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(Color(0x1AFFFFFF))
-                                .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(16.dp))
+                                .glassCard()
                                 .clickable { onNavigateToOrderDetails(order.id) }
                                 .padding(16.dp)
                         ) {
@@ -181,7 +155,7 @@ fun DashboardScreen(
                                     Text("Заказ #${order.id}", fontWeight = FontWeight.Bold, color = Color.White)
                                     Text("Ожидает назначения", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
                                 }
-                                Icon(Icons.Default.ArrowForward, contentDescription = null, tint = Color.White)
+                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color.White)
                             }
                         }
                     }
