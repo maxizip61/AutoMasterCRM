@@ -38,13 +38,13 @@ fun OrderDetailsScreen(
     viewModel: OrderDetailsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+
     var showBottomSheet by remember { mutableStateOf(false) }
+    var bottomSheetMode by remember { mutableStateOf("POST") } // "POST" или "EMPLOYEE"
+
     var showPaymentDialog by remember { mutableStateOf(false) }
     var showExpenseDialog by remember { mutableStateOf(false) }
     var employeeToAccrue by remember { mutableStateOf<EmployeeEntity?>(null) }
-
-    // ЧЕТКОЕ РАЗДЕЛЕНИЕ СОСТОЯНИЙ
-    var bottomSheetMode by remember { mutableStateOf("POST") } // "POST" или "EMPLOYEE"
 
     Scaffold(
         topBar = {
@@ -67,7 +67,7 @@ fun OrderDetailsScreen(
                 contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 80.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // 1. Карточка статуса с анимацией
+                // 1. Статус
                 item(key = "status_card") {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
@@ -87,8 +87,12 @@ fun OrderDetailsScreen(
                 }
 
                 // 2. Инфо
-                item(key = "client_info") { Text("Клиент: ${state.client?.name ?: "—"}", style = MaterialTheme.typography.bodyLarge, color = Color.White) }
-                item(key = "car_info") { Text("Машина: ${state.car?.make ?: ""} ${state.car?.licensePlate ?: ""}", style = MaterialTheme.typography.bodyLarge, color = Color.White) }
+                item(key = "info") {
+                    Column {
+                        Text("Клиент: ${state.client?.name ?: "—"}", style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                        Text("Машина: ${state.car?.make ?: ""} ${state.car?.licensePlate ?: ""}", style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                    }
+                }
 
                 // 3. Финансы
                 item(key = "finance_card") {
@@ -132,7 +136,7 @@ fun OrderDetailsScreen(
                     )
                 }
 
-                // 5. Сотрудники и начисления
+                // 5. Сотрудники
                 item(key = "salary_card") {
                     Text("Начисления мастерам", style = MaterialTheme.typography.titleMedium, color = Color.White)
                     Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp).animateContentSize(), colors = CardDefaults.cardColors(containerColor = Color(0x1AFFFFFF))) {
@@ -163,7 +167,7 @@ fun OrderDetailsScreen(
                     }
                 }
 
-                // 6. Кнопка действия (Смена статуса)
+                // 6. Кнопка действия
                 item(key = "action_button") {
                     val status = state.order!!.status.name
                     Spacer(modifier = Modifier.height(8.dp))
@@ -237,7 +241,6 @@ fun OrderDetailsScreen(
         )
     }
 
-    // НИЖНЕЕ МЕНЮ (Зависит от bottomSheetMode)
     if (showBottomSheet) {
         ModalBottomSheet(onDismissRequest = { showBottomSheet = false }) {
             Column(modifier = Modifier.padding(16.dp)) {

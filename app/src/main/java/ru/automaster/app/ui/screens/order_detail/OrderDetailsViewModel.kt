@@ -39,6 +39,7 @@ class OrderDetailsViewModel @Inject constructor(
     private val statusHistoryDao: StatusHistoryDao,
     private val paymentDao: PaymentDao,
     private val expenseDao: ExpenseDao,
+    private val expenseCategoryDao: ExpenseCategoryDao, // <-- ДОБАВЛЕНО
     private val employeeDao: EmployeeDao,
     private val accrualDao: OrderEmployeeAccrualDao,
     private val photoDao: PhotoDao,
@@ -78,16 +79,9 @@ class OrderDetailsViewModel @Inject constructor(
             val client = clientDao.getById(order.clientId)
             val car = carDao.getById(order.carId)
             OrderDetailsUiState(
-                order = order,
-                client = client,
-                car = car,
-                posts = posts,
-                payments = payments,
-                expenses = expenses,
-                employees = employees,
-                accruals = accruals,
-                photos = photos,
-                isLoading = false
+                order = order, client = client, car = car, posts = posts,
+                payments = payments, expenses = expenses, employees = employees,
+                accruals = accruals, photos = photos, isLoading = false
             )
         } else {
             OrderDetailsUiState(isLoading = false)
@@ -153,9 +147,12 @@ class OrderDetailsViewModel @Inject constructor(
     fun addExpense(amountRub: Long, comment: String) {
         viewModelScope.launch {
             val order = uiState.value.order ?: return@launch
+            // БЕЗОПАСНОЕ ПОЛУЧЕНИЕ КАТЕГОРИИ:
+            val categoryId = expenseCategoryDao.getFirstCategoryId() ?: 1L
+
             expenseDao.insert(
                 ExpenseEntity(
-                    amountCents = amountRub * 100, date = Instant.now(), categoryId = 4,
+                    amountCents = amountRub * 100, date = Instant.now(), categoryId = categoryId,
                     paymentMethod = PaymentMethod.CASH, comment = comment, orderId = order.id
                 )
             )
@@ -166,7 +163,6 @@ class OrderDetailsViewModel @Inject constructor(
         viewModelScope.launch {
             val order = uiState.value.order ?: return@launch
 
-            // ИСПРАВЛЕНО: Используем if-else как выражение, без var и без повторного присваивания
             val finalAmountCents = if (employee.compensationType == "PERCENT") {
                 (order.agreedEstimateCents * employee.rateValue) / 100
             } else {
@@ -199,12 +195,7 @@ class OrderDetailsViewModel @Inject constructor(
             viewModelScope.launch {
                 val relativePath = currentPhotoFile!!.absolutePath.substringAfter("files/")
                 photoDao.insert(
-                    PhotoEntity(
-                        orderId = orderId,
-                        type = type,
-                        filePath = relativePath,
-                        createdAt = Instant.now()
-                    )
+                    PhotoEntity(orderId = orderId, type = type, filePath = relativePath, createdAt = Instant.now())
                 )
             }
         }
