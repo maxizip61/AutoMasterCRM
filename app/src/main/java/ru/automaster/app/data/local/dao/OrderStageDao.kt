@@ -3,6 +3,7 @@ package ru.automaster.app.data.local.dao
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 import ru.automaster.app.data.local.entity.OrderStageEntity
+import java.time.Instant
 
 @Dao
 interface OrderStageDao {
@@ -24,7 +25,28 @@ interface OrderStageDao {
     @Query("SELECT * FROM order_stages WHERE stageStatus = 'IN_PROGRESS'")
     fun getActiveStages(): Flow<List<OrderStageEntity>>
 
-    // ВОТ ЭТОТ МЕТОД ДОБАВЛЕН:
     @Query("SELECT * FROM order_stages WHERE orderId = :orderId AND stageStatus = 'IN_PROGRESS' LIMIT 1")
     suspend fun getActiveStageForOrder(orderId: Long): OrderStageEntity?
+
+    /**
+     * Закрывает все активные этапы заказа перед назначением нового.
+     * Предотвращает появление двух этапов IN_PROGRESS у одного заказа.
+     */
+    @Query("""
+        UPDATE order_stages
+        SET stageStatus = 'COMPLETED', isCurrent = 0, actualEnd = :now
+        WHERE orderId = :orderId AND stageStatus = 'IN_PROGRESS'
+    """)
+    suspend fun completeActiveStages(orderId: Long, now: Instant)
+
+    /**
+     * Атомарное переназначение: закрыть старые этапы + вставить новый.
+     * Выполняется в одной транзакции, чтобы избежать рассинхронизации.
+     */
+    @Transaction
+    suspend fun reassign(orderId: Long, now: Instant, stage: OrderStageEntity) {
+        completeActiveStages(orderId, now)
+        clearCurrentStages(orderId)
+        insert(stage)
+    }
 }

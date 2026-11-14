@@ -2,12 +2,14 @@ package ru.automaster.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Премиальная палитра (Indigo + Graphite)
-val IndigoPrimary = Color(0xFF4F46E5)  // Deep Indigo
-val GraphiteDark = Color(0xFF0F172A)   // Graphite
-val GlassWhite = Color(0x40FFFFFF)     // Полупрозрачный белый для стекла
-val GlassBorder = Color(0x33FFFFFF)    // Рамка для стекла
-val InputGrey = Color(0xFFF1F5F9)      // Светло-серый для инпутов
+// Основные цвета (из дизайн-системы)
+val IndigoPrimary = Color(0xFF4F46E5)
+val GraphiteDark = Color(0xFF0F172A)
+
+// Премиальные цвета (для Glassmorphism)
+val GlassWhite = Color(0x40FFFFFF)
+val GlassBorder = Color(0x33FFFFFF)
+val InputGrey = Color(0xFFF1F5F9)
 
 // Статусы
 val StatusBody = Color(0xFF1565C0)

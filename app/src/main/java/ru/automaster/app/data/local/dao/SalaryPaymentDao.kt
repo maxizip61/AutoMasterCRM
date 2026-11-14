@@ -7,7 +7,7 @@ import java.time.Instant
 
 @Dao
 interface SalaryPaymentDao {
-    @Insert(onConflict = OnConflictStrategy.ABORT) // Оставляем ABORT из Блока 1
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(payment: SalaryPaymentEntity): Long
 
     @Update
@@ -25,6 +25,7 @@ interface SalaryPaymentDao {
     @Query("SELECT * FROM salary_payments ORDER BY date DESC")
     fun getAll(): Flow<List<SalaryPaymentEntity>>
 
+    // ВОТ ЭТОТ МЕТОД НУЖЕН ДЛЯ CASHFLOW
     @Query("SELECT SUM(amountCents) FROM salary_payments WHERE date >= :from AND date <= :to")
     suspend fun getTotalInRange(from: Instant, to: Instant): Long?
 

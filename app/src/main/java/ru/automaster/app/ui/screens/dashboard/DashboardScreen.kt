@@ -33,7 +33,7 @@ import ru.automaster.app.ui.theme.IndigoPrimary
 fun DashboardScreen(
     onNavigateToAddOrder: () -> Unit,
     onNavigateToOrderDetails: (Long) -> Unit,
-    viewModel: DashboardViewModel = hiltViewModel()
+    viewModel: DashboardViewModel = hiltViewModel() // <-- Только DashboardViewModel
 ) {
     val state by viewModel.uiState.collectAsState()
 
@@ -57,15 +57,10 @@ fun DashboardScreen(
                 contentPadding = PaddingValues(bottom = 80.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Блок 1: Касса дня
                 item(key = "cash_box") {
                     Box(
-                        modifier = Modifier
-                            .padding(horizontal = 16.dp)
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(GraphiteDark)
-                            .padding(24.dp)
+                        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp)).background(GraphiteDark).padding(24.dp)
                     ) {
                         Column {
                             Text("Касса дня", color = Color.Gray, style = MaterialTheme.typography.titleMedium)
@@ -84,30 +79,23 @@ fun DashboardScreen(
                             Text("Чистыми сегодня", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
                             Text(
                                 text = MoneyFormatter.format(state.dailyCashInCents - state.dailyCashOutCents),
-                                color = Color.White,
-                                style = MaterialTheme.typography.headlineLarge,
-                                fontWeight = FontWeight.Bold
+                                color = Color.White, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold
                             )
                         }
                     }
                 }
 
-                // Блок 2: Посты
                 item(key = "posts_title") {
                     Text("Посты", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(horizontal = 16.dp))
                 }
                 item(key = "posts_row") {
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         items(state.posts, key = { it.post.id }) { postState ->
                             ResourceCard(postState = postState, modifier = Modifier.width(280.dp))
                         }
                     }
                 }
 
-                // Блок 3: В работе
                 item(key = "in_work_title") {
                     Text("В работе (${state.inWorkOrders.size})", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(horizontal = 16.dp))
                 }
@@ -116,12 +104,8 @@ fun DashboardScreen(
                 } else {
                     items(state.inWorkOrders, key = { it.id }) { order ->
                         Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp)
-                                .glassCard()
-                                .clickable { onNavigateToOrderDetails(order.id) }
-                                .padding(16.dp)
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).glassCard()
+                                .clickable { onNavigateToOrderDetails(order.id) }.padding(16.dp)
                         ) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Column {
@@ -134,7 +118,6 @@ fun DashboardScreen(
                     }
                 }
 
-                // Блок 4: Ожидают
                 item(key = "waiting_title") {
                     Text("Ожидают (${state.waitingOrders.size})", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(horizontal = 16.dp))
                 }
@@ -143,12 +126,8 @@ fun DashboardScreen(
                 } else {
                     items(state.waitingOrders, key = { it.id }) { order ->
                         Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp)
-                                .glassCard()
-                                .clickable { onNavigateToOrderDetails(order.id) }
-                                .padding(16.dp)
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).glassCard()
+                                .clickable { onNavigateToOrderDetails(order.id) }.padding(16.dp)
                         ) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Column {

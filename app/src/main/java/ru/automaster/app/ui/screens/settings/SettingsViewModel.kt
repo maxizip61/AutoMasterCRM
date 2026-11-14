@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ru.automaster.app.data.local.dao.PostDao
@@ -20,14 +19,12 @@ class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
-    // Получаем список всех постов
     val posts = postDao.getAll().stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
 
-    // Получаем текущие настройки
     val settings = settingsRepository.settings.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -36,13 +33,13 @@ class SettingsViewModel @Inject constructor(
 
     fun renamePost(id: Long, newName: String) {
         viewModelScope.launch {
-            postDao.rename(id, newName)
+            runCatching { postDao.rename(id, newName) }
         }
     }
 
     fun togglePostActive(id: Long, isActive: Boolean) {
         viewModelScope.launch {
-            postDao.setActive(id, isActive)
+            runCatching { postDao.setActive(id, isActive) }
         }
     }
 

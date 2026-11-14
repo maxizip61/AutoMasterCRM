@@ -27,9 +27,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlinx.coroutines.launch
 import ru.automaster.app.data.local.entity.EmployeeEntity
 import ru.automaster.app.ui.components.MoneyFormatter
 import ru.automaster.app.ui.components.PrimaryGlassButton
+import ru.automaster.app.ui.components.RowLabelValue
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,21 +40,34 @@ fun OrderDetailsScreen(
     viewModel: OrderDetailsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+    val message by viewModel.message.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     var showBottomSheet by remember { mutableStateOf(false) }
-    var bottomSheetMode by remember { mutableStateOf("POST") } // "POST" или "EMPLOYEE"
-
+    var bottomSheetMode by remember { mutableStateOf("POST") }
     var showPaymentDialog by remember { mutableStateOf(false) }
     var showExpenseDialog by remember { mutableStateOf(false) }
     var employeeToAccrue by remember { mutableStateOf<EmployeeEntity?>(null) }
 
+    LaunchedEffect(message) {
+        if (message != null) {
+            scope.launch {
+                snackbarHostState.showSnackbar(message!!)
+                viewModel.clearMessage()
+            }
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Заказ #${state.order?.id ?: ""}") },
+                title = { Text("Заказ #${state.order?.id ?: ""}", color = MaterialTheme.colorScheme.onBackground) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад", tint = MaterialTheme.colorScheme.onBackground)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
@@ -67,67 +82,64 @@ fun OrderDetailsScreen(
                 contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 80.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // 1. Статус
                 item(key = "status_card") {
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                         modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy))
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Текущий статус", style = MaterialTheme.typography.labelMedium)
+                            Text("Текущий статус", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             AnimatedContent(
                                 targetState = state.order!!.status.name,
                                 transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) },
                                 label = "status_animation"
                             ) { targetStatus ->
-                                Text(targetStatus, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                                Text(targetStatus, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                             }
                         }
                     }
                 }
 
-                // 2. Инфо
                 item(key = "info") {
                     Column {
-                        Text("Клиент: ${state.client?.name ?: "—"}", style = MaterialTheme.typography.bodyLarge, color = Color.White)
-                        Text("Машина: ${state.car?.make ?: ""} ${state.car?.licensePlate ?: ""}", style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                        Text("Клиент: ${state.client?.name ?: "—"}", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground)
+                        Text("Машина: ${state.car?.make ?: ""} ${state.car?.licensePlate ?: ""}", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground)
                     }
                 }
 
-                // 3. Финансы
                 item(key = "finance_card") {
-                    Text("Финансы", style = MaterialTheme.typography.titleMedium, color = Color.White)
-                    Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp).animateContentSize(), colors = CardDefaults.cardColors(containerColor = Color(0x1AFFFFFF))) {
+                    Text("Финансы", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp).animateContentSize(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             val totalPaid = state.payments.sumOf { if (it.type.name == "REFUND") -it.amountCents else it.amountCents }
                             val totalSpent = state.expenses.sumOf { it.amountCents }
                             val totalSalary = state.accruals.sumOf { it.amountCents }
 
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Смета:", color = Color.White); Text(MoneyFormatter.format(state.order!!.agreedEstimateCents), fontWeight = FontWeight.Bold, color = Color.White)
-                            }
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Оплачено клиентом:", color = MaterialTheme.colorScheme.primary); Text(MoneyFormatter.format(totalPaid), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                            }
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Расходы:", color = MaterialTheme.colorScheme.error); Text(MoneyFormatter.format(totalSpent), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
-                            }
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("ЗП мастерам:", color = MaterialTheme.colorScheme.tertiary); Text(MoneyFormatter.format(totalSalary), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
-                            }
+                            RowLabelValue("Смета:", MoneyFormatter.format(state.order!!.agreedEstimateCents), MaterialTheme.colorScheme.onSurface)
+                            RowLabelValue("Оплачено клиентом:", MoneyFormatter.format(totalPaid), MaterialTheme.colorScheme.primary)
+                            RowLabelValue("Расходы:", MoneyFormatter.format(totalSpent), MaterialTheme.colorScheme.error)
+                            RowLabelValue("ЗП мастерам:", MoneyFormatter.format(totalSalary), MaterialTheme.colorScheme.tertiary)
 
-                            Spacer(modifier = Modifier.height(16.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(vertical = 8.dp))
+
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 PrimaryGlassButton(text = "+ Оплата", onClick = { showPaymentDialog = true }, modifier = Modifier.weight(1f))
-                                OutlinedButton(onClick = { showExpenseDialog = true }, modifier = Modifier.weight(1f).height(56.dp), shape = RoundedCornerShape(12.dp)) {
-                                    Text("+ Расход", color = Color.White)
+                                OutlinedButton(
+                                    onClick = { showExpenseDialog = true },
+                                    modifier = Modifier.weight(1f).height(56.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)
+                                ) {
+                                    Text("+ Расход")
                                 }
                             }
                         }
                     }
                 }
 
-                // 4. Фото
                 item(key = "photos_section") {
                     OrderPhotosSection(
                         photos = state.photos,
@@ -136,50 +148,39 @@ fun OrderDetailsScreen(
                     )
                 }
 
-                // 5. Сотрудники
                 item(key = "salary_card") {
-                    Text("Начисления мастерам", style = MaterialTheme.typography.titleMedium, color = Color.White)
-                    Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp).animateContentSize(), colors = CardDefaults.cardColors(containerColor = Color(0x1AFFFFFF))) {
+                    Text("Начисления мастерам", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp).animateContentSize(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             if (state.accruals.isEmpty()) {
-                                Text("Нет начислений", color = Color.Gray, style = MaterialTheme.typography.bodyMedium)
+                                Text("Нет начислений", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                             } else {
                                 state.accruals.forEach { accrual ->
                                     val empName = state.employees.find { it.id == accrual.employeeId }?.fullName ?: "Сотрудник"
-                                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text(empName, color = Color.White)
-                                        Text(MoneyFormatter.format(accrual.amountCents), fontWeight = FontWeight.Bold, color = Color.White)
-                                    }
+                                    RowLabelValue(empName, MoneyFormatter.format(accrual.amountCents))
                                 }
                             }
                             Spacer(modifier = Modifier.height(8.dp))
                             OutlinedButton(
-                                onClick = {
-                                    bottomSheetMode = "EMPLOYEE" // ВКЛЮЧАЕМ РЕЖИМ СОТРУДНИКОВ
-                                    showBottomSheet = true
-                                },
+                                onClick = { bottomSheetMode = "EMPLOYEE"; showBottomSheet = true },
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp)
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)
                             ) {
-                                Text("+ Начислить ЗП", color = Color.White)
+                                Text("+ Начислить ЗП")
                             }
                         }
                     }
                 }
 
-                // 6. Кнопка действия
                 item(key = "action_button") {
                     val status = state.order!!.status.name
                     Spacer(modifier = Modifier.height(8.dp))
                     if (status == "ACCEPTED" || status == "WAITING") {
-                        PrimaryGlassButton(
-                            text = "Назначить на пост",
-                            onClick = {
-                                bottomSheetMode = "POST" // ВКЛЮЧАЕМ РЕЖИМ ПОСТОВ
-                                showBottomSheet = true
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        PrimaryGlassButton(text = "Назначить на пост", onClick = { bottomSheetMode = "POST"; showBottomSheet = true }, modifier = Modifier.fillMaxWidth())
                     } else if (status == "BODY" || status == "PREP" || status == "PAINT") {
                         PrimaryGlassButton(text = "Завершить этап", onClick = { viewModel.completeCurrentStage(); onNavigateBack() }, modifier = Modifier.fillMaxWidth())
                     } else if (status == "ISSUE") {
@@ -195,6 +196,9 @@ fun OrderDetailsScreen(
         var amount by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showPaymentDialog = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+            titleContentColor = MaterialTheme.colorScheme.onSurface,
+            textContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
             title = { Text("Добавить оплату") },
             text = { OutlinedTextField(value = amount, onValueChange = { amount = it.filter { c -> c.isDigit() } }, label = { Text("Сумма в рублях") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)) },
             confirmButton = { TextButton(onClick = { amount.toLongOrNull()?.let { viewModel.addPayment(it) }; showPaymentDialog = false }) { Text("Добавить") } },
@@ -207,6 +211,9 @@ fun OrderDetailsScreen(
         var comment by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showExpenseDialog = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+            titleContentColor = MaterialTheme.colorScheme.onSurface,
+            textContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
             title = { Text("Добавить расход") },
             text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = amount, onValueChange = { amount = it.filter { c -> c.isDigit() } }, label = { Text("Сумма в рублях") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
@@ -224,6 +231,9 @@ fun OrderDetailsScreen(
 
         AlertDialog(
             onDismissRequest = { employeeToAccrue = null },
+            containerColor = MaterialTheme.colorScheme.surface,
+            titleContentColor = MaterialTheme.colorScheme.onSurface,
+            textContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
             title = { Text("Начислить ЗП: ${emp.fullName}") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -242,38 +252,34 @@ fun OrderDetailsScreen(
     }
 
     if (showBottomSheet) {
-        ModalBottomSheet(onDismissRequest = { showBottomSheet = false }) {
+        ModalBottomSheet(
+            onDismissRequest = { showBottomSheet = false },
+            containerColor = MaterialTheme.colorScheme.surface
+        ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 if (bottomSheetMode == "EMPLOYEE") {
-                    Text("Выберите сотрудника", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 16.dp))
+                    Text("Выберите сотрудника", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(bottom = 16.dp))
                     if (state.employees.isEmpty()) {
-                        Text("Нет сотрудников. Добавьте их на вкладке 'Зарплата'.", color = Color.Gray)
+                        Text("Нет сотрудников. Добавьте их на вкладке 'Зарплата'.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     state.employees.forEach { emp ->
                         ListItem(
-                            headlineContent = { Text(emp.fullName) },
-                            supportingContent = { Text(emp.position) },
-                            leadingContent = { Icon(Icons.Default.Person, contentDescription = null) },
-                            modifier = Modifier.clickable {
-                                employeeToAccrue = emp
-                                showBottomSheet = false
-                            }
+                            headlineContent = { Text(emp.fullName, color = MaterialTheme.colorScheme.onSurface) },
+                            supportingContent = { Text(emp.position, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                            leadingContent = { Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface) },
+                            modifier = Modifier.clickable { employeeToAccrue = emp; showBottomSheet = false }
                         )
-                        HorizontalDivider()
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
                     }
                 } else {
-                    Text("Выберите пост", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 16.dp))
+                    Text("Выберите пост", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(bottom = 16.dp))
                     state.posts.forEach { post ->
                         ListItem(
-                            headlineContent = { Text(post.name.name.replace("_", " ")) },
-                            leadingContent = { Icon(Icons.Default.Build, contentDescription = null) },
-                            modifier = Modifier.clickable {
-                                viewModel.assignToPost(post)
-                                showBottomSheet = false
-                                onNavigateBack()
-                            }
+                            headlineContent = { Text(post.name.name.replace("_", " "), color = MaterialTheme.colorScheme.onSurface) },
+                            leadingContent = { Icon(Icons.Default.Build, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface) },
+                            modifier = Modifier.clickable { viewModel.assignToPost(post); showBottomSheet = false; onNavigateBack() }
                         )
-                        HorizontalDivider()
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
                     }
                 }
             }

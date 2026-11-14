@@ -3,9 +3,11 @@ package ru.automaster.app.ui
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.AccountBalance // <-- НОВАЯ ИКОНКА
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -35,6 +37,7 @@ import ru.automaster.app.ui.theme.IndigoPrimary
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         setContent {
             AutoMasterTheme {
                 MainScreen()
@@ -61,21 +64,14 @@ fun MainScreen(
     val isLocked by lockViewModel.isLocked.collectAsState()
     val useBiometric by lockViewModel.useBiometric.collectAsState()
 
-    // Слушатель жизненного цикла для автоблокировки
     val lifecycleOwner = ProcessLifecycleOwner.get()
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val observer = object : DefaultLifecycleObserver {
-            override fun onStop(owner: LifecycleOwner) {
-                lockViewModel.onAppBackgrounded()
-            }
-            override fun onStart(owner: LifecycleOwner) {
-                lockViewModel.onAppForegrounded(60) // 60 секунд таймаут
-            }
+            override fun onStop(owner: LifecycleOwner) { lockViewModel.onAppBackgrounded() }
+            override fun onStart(owner: LifecycleOwner) { lockViewModel.onAppForegrounded(60) }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     AppLockGate(
@@ -92,6 +88,7 @@ fun MainScreen(
             BottomNavItem(Screen.Dashboard, Icons.Default.Home, "Главная"),
             BottomNavItem(Screen.Orders, Icons.AutoMirrored.Filled.List, "Заказы"),
             BottomNavItem(Screen.Finance, Icons.Default.ShoppingCart, "Финансы"),
+            BottomNavItem(Screen.Taxes, Icons.Default.AccountBalance, "Налоги"), // <-- ВКЛАДКА НАЛОГИ
             BottomNavItem(Screen.Payroll, Icons.Default.Person, "Зарплата")
         )
 

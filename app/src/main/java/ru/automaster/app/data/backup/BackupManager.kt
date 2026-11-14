@@ -1,6 +1,7 @@
 package ru.automaster.app.data.backup
 
 import android.content.Context
+import android.content.Intent
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -24,7 +25,11 @@ class BackupManager @Inject constructor(
     private val db: AppDatabase
 ) {
     private val dbName = "automaster_database"
-    private val photosDir = File(context.filesDir, "photos")
+    private val photosDir = File(context.filesDir.absolutePath + "/photos")
+
+    /** Только File(String) — никаких двухаргументных конструкторов. */
+    private fun child(parent: File, name: String): File =
+        File(parent.absolutePath + "/" + name)
 
     suspend fun createBackup(output: OutputStream): Result<Unit> = withContext(Dispatchers.IO) {
         try {
@@ -34,7 +39,7 @@ class BackupManager @Inject constructor(
 
             ZipOutputStream(output).use { zos ->
                 val manifest = JSONObject().apply {
-                    put("version", 1)
+                    put("version", db.openHelper.writableDatabase.version)
                     put("createdAt", dateFormat.format(Date()))
                     put("appVersion", "1.0")
                 }
@@ -51,7 +56,7 @@ class BackupManager @Inject constructor(
                 if (photosDir.exists()) {
                     photosDir.walkTopDown().forEach { file ->
                         if (file.isFile) {
-                            val entryPath = "photos/${file.relativeTo(photosDir).path}"
+                            val entryPath = "photos/" + file.relativeTo(photosDir).path.replace('\\', '/')
                             zos.putNextEntry(ZipEntry(entryPath))
                             file.inputStream().use { it.copyTo(zos) }
                             zos.closeEntry()
@@ -66,9 +71,9 @@ class BackupManager @Inject constructor(
     }
 
     suspend fun restoreBackup(input: InputStream): Result<Unit> = withContext(Dispatchers.IO) {
-        val tempDir = File(context.cacheDir, "restore_temp")
-        val safetyDir = File(context.cacheDir, "restore_safety")
-
+        val tempDir = File(context.cacheDir.absolutePath + "/restore_temp")
+        val safetyDir = File(context.cacheDir.absolutePath + "/restore_safety")
+        val currentDb = context.getDatabasePath(dbName)
         try {
             if (tempDir.exists()) tempDir.deleteRecursively()
             tempDir.mkdirs()
@@ -76,9 +81,13 @@ class BackupManager @Inject constructor(
             ZipInputStream(input).use { zis ->
                 var entry = zis.nextEntry
                 while (entry != null) {
-                    val file = File(tempDir, entry.name)
-                    if (entry.isDirectory) file.mkdirs()
-                    else {
+                    val file = child(tempDir, entry.name)
+                    if (!file.canonicalPath.startsWith(tempDir.canonicalPath + File.separator)) {
+                        throw SecurityException("Некорректный путь в архиве: ${entry.name}")
+                    }
+                    if (entry.isDirectory) {
+                        file.mkdirs()
+                    } else {
                         file.parentFile?.mkdirs()
                         file.outputStream().use { zis.copyTo(it) }
                     }
@@ -87,42 +96,41 @@ class BackupManager @Inject constructor(
                 }
             }
 
-            val manifestFile = File(tempDir, "manifest.json")
+            val manifestFile = child(tempDir, "manifest.json")
             if (!manifestFile.exists()) throw Exception("Неверный формат: нет manifest.json")
 
-            val extractedDb = File(tempDir, "database/$dbName")
+            val extractedDb = child(tempDir, "database/$dbName")
             if (!extractedDb.exists()) throw Exception("Неверный формат: нет базы данных")
 
             if (safetyDir.exists()) safetyDir.deleteRecursively()
             safetyDir.mkdirs()
 
-            val currentDb = context.getDatabasePath(dbName)
-            if (currentDb.exists()) currentDb.copyTo(File(safetyDir, dbName), overwrite = true)
-            if (photosDir.exists()) photosDir.copyRecursively(File(safetyDir, "photos"), overwrite = true)
+            val safetyDbFile = child(safetyDir, dbName)
+            if (currentDb.exists()) currentDb.copyTo(safetyDbFile, overwrite = true)
+
+            val safetyPhotosDir = child(safetyDir, "photos")
+            if (photosDir.exists()) photosDir.copyRecursively(safetyPhotosDir, overwrite = true)
 
             db.close()
-
             currentDb.delete()
-
-            // ВОТ ЗДЕСЬ БЫЛА ОШИБКА, ТЕПЕРЬ ИСПРАВЛЕНО:
-            context.getDatabasePath("$dbName-wal").delete()
-            context.getDatabasePath("$dbName-shm").delete()
-
+            File(currentDb.absolutePath + "-wal").delete()
+            File(currentDb.absolutePath + "-shm").delete()
             extractedDb.copyTo(currentDb, overwrite = true)
 
             if (photosDir.exists()) photosDir.deleteRecursively()
-            val tempPhotos = File(tempDir, "photos")
+            val tempPhotos = child(tempDir, "photos")
             if (tempPhotos.exists()) tempPhotos.copyRecursively(photosDir, overwrite = true)
 
             if (safetyDir.exists()) safetyDir.deleteRecursively()
-
             Result.success(Unit)
         } catch (e: Exception) {
-            val currentDb = context.getDatabasePath(dbName)
-            if (!currentDb.exists() && File(safetyDir, dbName).exists()) {
-                File(safetyDir, dbName).copyTo(currentDb)
-                val tempPhotos = File(safetyDir, "photos")
-                if (tempPhotos.exists()) tempPhotos.copyRecursively(photosDir, overwrite = true)
+            val safetyDbFile = child(safetyDir, dbName)
+            if (!currentDb.exists() && safetyDbFile.exists()) {
+                safetyDbFile.copyTo(currentDb, overwrite = true)
+                val safetyPhotosDir = child(safetyDir, "photos")
+                if (safetyPhotosDir.exists()) {
+                    safetyPhotosDir.copyRecursively(photosDir, overwrite = true)
+                }
             }
             Result.failure(e)
         } finally {
@@ -130,16 +138,24 @@ class BackupManager @Inject constructor(
         }
     }
 
+    /** Вызывать после успешного восстановления — Room уже закрыт. */
+    fun restartAppAfterRestore() {
+        val intent = context.packageManager
+            .getLaunchIntentForPackage(context.packageName)
+            ?.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK) }
+        if (intent != null) context.startActivity(intent)
+        android.os.Process.killProcess(android.os.Process.myPid())
+    }
+
     fun getLocalBackups(): List<File> {
         val backupDir = context.getExternalFilesDir("backups") ?: return emptyList()
         if (!backupDir.exists()) return emptyList()
-        return backupDir.listFiles { file -> file.extension == "zip" }?.sortedByDescending { it.lastModified() } ?: emptyList()
+        return backupDir.listFiles { file -> file.extension == "zip" }
+            ?.sortedByDescending { it.lastModified() } ?: emptyList()
     }
 
     fun cleanupOldBackups(keepCount: Int) {
         val backups = getLocalBackups()
-        if (backups.size > keepCount) {
-            backups.drop(keepCount).forEach { it.delete() }
-        }
+        if (backups.size > keepCount) backups.drop(keepCount).forEach { it.delete() }
     }
 }

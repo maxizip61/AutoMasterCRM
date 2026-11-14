@@ -5,8 +5,10 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import ru.automaster.app.data.local.dao.*
 import ru.automaster.app.data.local.entity.*
 import ru.automaster.app.data.storage.PhotoFileManager
@@ -39,7 +41,7 @@ class OrderDetailsViewModel @Inject constructor(
     private val statusHistoryDao: StatusHistoryDao,
     private val paymentDao: PaymentDao,
     private val expenseDao: ExpenseDao,
-    private val expenseCategoryDao: ExpenseCategoryDao, // <-- ДОБАВЛЕНО
+    private val expenseCategoryDao: ExpenseCategoryDao,
     private val employeeDao: EmployeeDao,
     private val accrualDao: OrderEmployeeAccrualDao,
     private val photoDao: PhotoDao,
@@ -48,9 +50,16 @@ class OrderDetailsViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val orderId: Long = checkNotNull(savedStateHandle["orderId"])
-
     private var currentPhotoUri: Uri? = null
     private var currentPhotoFile: File? = null
+
+    // Поток для сообщений об ошибках
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message.asStateFlow()
+
+    fun clearMessage() {
+        _message.value = null
+    }
 
     val uiState: StateFlow<OrderDetailsUiState> = combine(
         orderDao.getByIdFlow(orderId),
@@ -62,18 +71,12 @@ class OrderDetailsViewModel @Inject constructor(
         photoDao.getByOrder(orderId)
     ) { args ->
         val order = args[0] as OrderEntity?
-        @Suppress("UNCHECKED_CAST")
-        val posts = args[1] as List<PostEntity>
-        @Suppress("UNCHECKED_CAST")
-        val payments = args[2] as List<PaymentEntity>
-        @Suppress("UNCHECKED_CAST")
-        val expenses = args[3] as List<ExpenseEntity>
-        @Suppress("UNCHECKED_CAST")
-        val employees = args[4] as List<EmployeeEntity>
-        @Suppress("UNCHECKED_CAST")
-        val accruals = args[5] as List<OrderEmployeeAccrualEntity>
-        @Suppress("UNCHECKED_CAST")
-        val photos = args[6] as List<PhotoEntity>
+        @Suppress("UNCHECKED_CAST") val posts = args[1] as List<PostEntity>
+        @Suppress("UNCHECKED_CAST") val payments = args[2] as List<PaymentEntity>
+        @Suppress("UNCHECKED_CAST") val expenses = args[3] as List<ExpenseEntity>
+        @Suppress("UNCHECKED_CAST") val employees = args[4] as List<EmployeeEntity>
+        @Suppress("UNCHECKED_CAST") val accruals = args[5] as List<OrderEmployeeAccrualEntity>
+        @Suppress("UNCHECKED_CAST") val photos = args[6] as List<PhotoEntity>
 
         if (order != null) {
             val client = clientDao.getById(order.clientId)
@@ -83,9 +86,7 @@ class OrderDetailsViewModel @Inject constructor(
                 payments = payments, expenses = expenses, employees = employees,
                 accruals = accruals, photos = photos, isLoading = false
             )
-        } else {
-            OrderDetailsUiState(isLoading = false)
-        }
+        } else OrderDetailsUiState(isLoading = false)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -94,91 +95,170 @@ class OrderDetailsViewModel @Inject constructor(
 
     fun assignToPost(post: PostEntity) {
         viewModelScope.launch {
-            val order = uiState.value.order ?: return@launch
-            val newPhase = if (post.type == PostType.PAINT) StagePhase.PAINT else StagePhase.BODY
-            val newStatus = if (newPhase == StagePhase.PAINT) OrderStatus.PAINT else OrderStatus.BODY
+            withContext(NonCancellable) {
+                runCatching {
+                    val order = uiState.value.order ?: return@runCatching
+                    val now = Instant.now()
+                    val newPhase = if (post.type == PostType.PAINT) StagePhase.PAINT else StagePhase.BODY
+                    val newStatus = if (newPhase == StagePhase.PAINT) OrderStatus.PAINT else OrderStatus.BODY
 
-            orderStageDao.insert(
-                OrderStageEntity(
-                    orderId = order.id, phase = newPhase, postId = post.id, sequence = 1, isCurrent = true,
-                    stageStatus = StageStatus.IN_PROGRESS, plannedStart = Instant.now(),
-                    plannedEnd = Instant.now().plusSeconds(3600), actualStart = Instant.now()
-                )
-            )
-            orderDao.update(order.copy(status = newStatus))
-            statusHistoryDao.insert(StatusHistoryEntity(orderId = order.id, oldStatus = order.status, newStatus = newStatus, changedAt = Instant.now(), comment = "Назначен на пост ${post.name.name}"))
+                    val activeStage = orderStageDao.getActiveStageForOrder(order.id)
+                    if (activeStage != null) {
+                        orderStageDao.update(
+                            activeStage.copy(
+                                stageStatus = StageStatus.COMPLETED,
+                                isCurrent = false,
+                                actualEnd = now
+                            )
+                        )
+                    }
+                    orderStageDao.clearCurrentStages(order.id)
+
+                    orderStageDao.insert(
+                        OrderStageEntity(
+                            orderId = order.id, phase = newPhase, postId = post.id,
+                            sequence = 1, isCurrent = true, stageStatus = StageStatus.IN_PROGRESS,
+                            plannedStart = now, plannedEnd = now.plusSeconds(3600), actualStart = now
+                        )
+                    )
+                    orderDao.update(order.copy(status = newStatus))
+                    statusHistoryDao.insert(
+                        StatusHistoryEntity(
+                            orderId = order.id, oldStatus = order.status, newStatus = newStatus,
+                            changedAt = now,
+                            comment = "Назначен на пост ${post.displayName.ifEmpty { post.name.name }}"
+                        )
+                    )
+                }.onFailure { e ->
+                    _message.value = "Ошибка назначения на пост: ${e.message}"
+                }
+            }
         }
     }
 
     fun completeCurrentStage() {
         viewModelScope.launch {
-            val order = uiState.value.order ?: return@launch
-            val activeStage = orderStageDao.getActiveStageForOrder(order.id)
-            if (activeStage != null) {
-                orderStageDao.update(activeStage.copy(stageStatus = StageStatus.COMPLETED, actualEnd = Instant.now()))
-                val newStatus = OrderStatus.ISSUE
-                orderDao.update(order.copy(status = newStatus))
-                statusHistoryDao.insert(StatusHistoryEntity(orderId = order.id, oldStatus = order.status, newStatus = newStatus, changedAt = Instant.now(), comment = "Завершен этап работы"))
+            withContext(NonCancellable) {
+                runCatching {
+                    val order = uiState.value.order ?: return@runCatching
+                    val activeStage = orderStageDao.getActiveStageForOrder(order.id)
+                    if (activeStage != null) {
+                        val now = Instant.now()
+                        orderStageDao.update(
+                            activeStage.copy(
+                                stageStatus = StageStatus.COMPLETED,
+                                isCurrent = false,
+                                actualEnd = now
+                            )
+                        )
+                        orderDao.update(order.copy(status = OrderStatus.ISSUE))
+                        statusHistoryDao.insert(
+                            StatusHistoryEntity(
+                                orderId = order.id, oldStatus = order.status,
+                                newStatus = OrderStatus.ISSUE,
+                                changedAt = now, comment = "Завершен этап работы"
+                            )
+                        )
+                    }
+                }.onFailure { e ->
+                    _message.value = "Ошибка завершения этапа: ${e.message}"
+                }
             }
         }
     }
 
     fun closeOrder() {
         viewModelScope.launch {
-            val order = uiState.value.order ?: return@launch
-            val now = Instant.now()
-            orderDao.update(order.copy(status = OrderStatus.DONE, actualDeliveryDate = now, closedAt = now))
-            statusHistoryDao.insert(StatusHistoryEntity(orderId = order.id, oldStatus = order.status, newStatus = OrderStatus.DONE, changedAt = now, comment = "Автомобиль выдан клиенту"))
+            withContext(NonCancellable) {
+                runCatching {
+                    val order = uiState.value.order ?: return@runCatching
+                    val now = Instant.now()
+                    orderDao.update(
+                        order.copy(status = OrderStatus.DONE, actualDeliveryDate = now, closedAt = now)
+                    )
+                    statusHistoryDao.insert(
+                        StatusHistoryEntity(
+                            orderId = order.id, oldStatus = order.status, newStatus = OrderStatus.DONE,
+                            changedAt = now, comment = "Автомобиль выдан клиенту"
+                        )
+                    )
+                }.onFailure { e ->
+                    _message.value = "Ошибка закрытия заказа: ${e.message}"
+                }
+            }
         }
     }
 
     fun addPayment(amountRub: Long) {
         viewModelScope.launch {
             val order = uiState.value.order ?: return@launch
-            paymentDao.insert(
-                PaymentEntity(
-                    orderId = order.id, type = PaymentType.PAYMENT, amountCents = amountRub * 100,
-                    date = Instant.now(), method = PaymentMethod.CASH
+            runCatching {
+                paymentDao.insert(
+                    PaymentEntity(
+                        orderId = order.id, type = PaymentType.PAYMENT,
+                        amountCents = amountRub * 100, date = Instant.now(),
+                        method = PaymentMethod.CASH
+                    )
                 )
-            )
+            }.onFailure { e ->
+                _message.value = "Ошибка добавления оплаты: ${e.message}"
+            }
         }
     }
 
+    // ОБНОВЛЕННЫЙ МЕТОД (С защитой от пустых категорий)
     fun addExpense(amountRub: Long, comment: String) {
         viewModelScope.launch {
             val order = uiState.value.order ?: return@launch
-            // БЕЗОПАСНОЕ ПОЛУЧЕНИЕ КАТЕГОРИИ:
-            val categoryId = expenseCategoryDao.getFirstCategoryId() ?: 1L
 
-            expenseDao.insert(
-                ExpenseEntity(
-                    amountCents = amountRub * 100, date = Instant.now(), categoryId = categoryId,
-                    paymentMethod = PaymentMethod.CASH, comment = comment, orderId = order.id
+            runCatching {
+                // 1. Проверяем, есть ли вообще категории в БД
+                var categoryId = expenseCategoryDao.getFirstCategoryId()
+
+                // 2. Если категорий нет (таблица пуста), создаем дефолтную
+                if (categoryId == null) {
+                    categoryId = expenseCategoryDao.insert(
+                        ExpenseCategoryEntity(name = "Прочее", defaultInclude = true)
+                    )
+                }
+
+                // 3. Вставляем расход
+                expenseDao.insert(
+                    ExpenseEntity(
+                        amountCents = amountRub * 100,
+                        date = Instant.now(),
+                        categoryId = categoryId, // Теперь ID точно существует
+                        paymentMethod = PaymentMethod.CASH,
+                        comment = comment.ifBlank { null },
+                        orderId = order.id
+                    )
                 )
-            )
+            }.onFailure { e ->
+                _message.value = "Ошибка добавления расхода: ${e.message}"
+            }
         }
     }
 
     fun addAccrual(employee: EmployeeEntity, panelsCount: Int = 1) {
         viewModelScope.launch {
             val order = uiState.value.order ?: return@launch
-
-            val finalAmountCents = if (employee.compensationType == "PERCENT") {
-                (order.agreedEstimateCents * employee.rateValue) / 100
-            } else {
-                (employee.rateValue * panelsCount) * 100
-            }
-
-            accrualDao.insert(
-                OrderEmployeeAccrualEntity(
-                    orderId = order.id,
-                    employeeId = employee.id,
-                    type = if (employee.compensationType == "PERCENT") AccrualType.PERCENT else AccrualType.PANEL,
-                    amountCents = finalAmountCents,
-                    closedAt = Instant.now(),
-                    idempotencyKey = UUID.randomUUID().toString()
+            runCatching {
+                val finalAmountCents = if (employee.compensationType == "PERCENT") {
+                    (order.agreedEstimateCents * employee.rateValue) / 100
+                } else {
+                    (employee.rateValue * panelsCount) * 100
+                }
+                accrualDao.insert(
+                    OrderEmployeeAccrualEntity(
+                        orderId = order.id, employeeId = employee.id,
+                        type = if (employee.compensationType == "PERCENT") AccrualType.PERCENT else AccrualType.PANEL,
+                        amountCents = finalAmountCents, closedAt = Instant.now(),
+                        idempotencyKey = UUID.randomUUID().toString()
+                    )
                 )
-            )
+            }.onFailure { e ->
+                _message.value = "Ошибка начисления ЗП: ${e.message}"
+            }
         }
     }
 
@@ -191,12 +271,20 @@ class OrderDetailsViewModel @Inject constructor(
     }
 
     fun savePhotoToDb(orderId: Long, isSuccess: Boolean, type: PhotoType = PhotoType.BEFORE) {
-        if (isSuccess && currentPhotoFile != null) {
+        val file = currentPhotoFile
+        if (isSuccess && file != null) {
             viewModelScope.launch {
-                val relativePath = currentPhotoFile!!.absolutePath.substringAfter("files/")
-                photoDao.insert(
-                    PhotoEntity(orderId = orderId, type = type, filePath = relativePath, createdAt = Instant.now())
-                )
+                runCatching {
+                    val relativePath = file.absolutePath.substringAfter("files/")
+                    photoDao.insert(
+                        PhotoEntity(
+                            orderId = orderId, type = type,
+                            filePath = relativePath, createdAt = Instant.now()
+                        )
+                    )
+                }.onFailure { e ->
+                    _message.value = "Ошибка сохранения фото: ${e.message}"
+                }
             }
         }
         currentPhotoFile = null

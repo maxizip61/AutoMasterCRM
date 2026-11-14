@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -18,14 +20,12 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import ru.automaster.app.R
 import ru.automaster.app.ui.theme.GraphiteDark
 import ru.automaster.app.ui.theme.IndigoPrimary
 
-/**
- * Фон с эффектом Glassmorphism. Использует заранее размытую картинку для производительности.
- */
 @Composable
 fun PremiumGlassBackground(content: @Composable BoxScope.() -> Unit) {
     Box(modifier = Modifier.fillMaxSize()) {
@@ -38,24 +38,18 @@ fun PremiumGlassBackground(content: @Composable BoxScope.() -> Unit) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(GraphiteDark.copy(alpha = 0.85f)) // Чуть темнее, так как картинка теперь без блюра
+                .background(GraphiteDark.copy(alpha = 0.85f))
         )
         content()
     }
 }
 
-/**
- * Модификатор для стеклянных карточек.
- */
 fun Modifier.glassCard(): Modifier = this
     .clip(RoundedCornerShape(16.dp))
     .background(Color(0x1AFFFFFF))
     .border(BorderStroke(1.dp, Color(0x22FFFFFF)), RoundedCornerShape(16.dp))
-    .graphicsLayer { alpha = 0.99f } // Форсируем аппаратное ускорение
+    .graphicsLayer { alpha = 0.99f }
 
-/**
- * Премиальная кнопка с тактильным откликом (вибрацией).
- */
 @Composable
 fun PrimaryGlassButton(
     text: String,
@@ -74,6 +68,25 @@ fun PrimaryGlassButton(
         colors = ButtonDefaults.buttonColors(containerColor = IndigoPrimary),
         enabled = enabled
     ) {
-        Text(text = text, color = Color.White)
+        Text(text = text, color = Color.White, fontWeight = FontWeight.Bold)
+    }
+}
+
+/**
+ * Единый компонент для отображения "Подпись слева — Значение справа"
+ */
+@Composable
+fun RowLabelValue(
+    label: String,
+    value: String,
+    valueColor: Color = MaterialTheme.colorScheme.onSurface
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+        Text(value, color = valueColor, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
     }
 }

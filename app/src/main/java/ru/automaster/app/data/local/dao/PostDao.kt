@@ -21,8 +21,8 @@ interface PostDao {
     suspend fun insertAll(posts: List<PostEntity>)
 
     // TODO: Спринт 1 — реализовать после миграции 1→2 (добавить displayName и isActive в PostEntity)
-    @Query("UPDATE posts SET name = :newName WHERE id = :id")
-    suspend fun rename(id: Long, newName: PostName)
+    @Query("UPDATE posts SET displayName = :displayName WHERE id = :id")
+    suspend fun rename(id: Long, displayName: String)
 
     // TODO: Спринт 1 — реализовать после миграции 1→2
     @Query("UPDATE posts SET type = :isActive WHERE id = :id")
