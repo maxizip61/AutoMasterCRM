@@ -14,7 +14,9 @@ private val DarkColorScheme = darkColorScheme(
     primary = IndigoPrimary,
     onPrimary = Color.White,
     secondary = IndigoPrimary,
+    onSecondary = Color.White,
     tertiary = Color(0xFFF59E0B),
+    onTertiary = Color.White,
     background = GraphiteDark,
     onBackground = Color.White,
     surface = Color(0xFF111827),
@@ -28,7 +30,6 @@ private val DarkColorScheme = darkColorScheme(
 
 @Composable
 fun AutoMasterTheme(
-    darkTheme: Boolean = true, // Принудительно темная тема
     content: @Composable () -> Unit
 ) {
     val colorScheme = DarkColorScheme

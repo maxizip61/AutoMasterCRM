@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import ru.automaster.app.domain.model.WorkRole
 import java.time.Instant
 
 @Entity(
@@ -19,7 +20,7 @@ data class OrderEmployeeAssignmentEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val orderId: Long,
     val employeeId: Long,
+    val role: WorkRole = WorkRole.GENERAL,
     val stageId: Long? = null,
-    val role: String? = null,
     val createdAt: Instant
 )

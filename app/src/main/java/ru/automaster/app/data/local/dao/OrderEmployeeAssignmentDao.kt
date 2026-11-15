@@ -6,7 +6,7 @@ import ru.automaster.app.data.local.entity.OrderEmployeeAssignmentEntity
 
 @Dao
 interface OrderEmployeeAssignmentDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(assignment: OrderEmployeeAssignmentEntity): Long
 
     @Delete

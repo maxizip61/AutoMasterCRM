@@ -33,7 +33,7 @@ import ru.automaster.app.ui.theme.IndigoPrimary
 fun DashboardScreen(
     onNavigateToAddOrder: () -> Unit,
     onNavigateToOrderDetails: (Long) -> Unit,
-    viewModel: DashboardViewModel = hiltViewModel() // <-- Только DashboardViewModel
+    viewModel: DashboardViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
 
@@ -91,7 +91,11 @@ fun DashboardScreen(
                 item(key = "posts_row") {
                     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         items(state.posts, key = { it.post.id }) { postState ->
-                            ResourceCard(postState = postState, modifier = Modifier.width(280.dp))
+                            ResourceCard(
+                                postState = postState,
+                                modifier = Modifier.width(280.dp),
+                                onDetailsClick = { orderId -> onNavigateToOrderDetails(orderId) } // <-- ДОБАВЛЕНО
+                            )
                         }
                     }
                 }

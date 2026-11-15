@@ -5,6 +5,7 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import ru.automaster.app.domain.model.AccrualType
+import ru.automaster.app.domain.model.WorkRole
 import java.time.Instant
 
 @Entity(
@@ -24,6 +25,7 @@ data class OrderEmployeeAccrualEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val orderId: Long,
     val employeeId: Long,
+    val role: WorkRole = WorkRole.GENERAL,
     val type: AccrualType,
     val percentBps: Int? = null,
     val panelCents: Long? = null,

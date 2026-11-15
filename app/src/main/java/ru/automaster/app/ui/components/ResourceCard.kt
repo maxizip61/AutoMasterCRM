@@ -26,7 +26,8 @@ import ru.automaster.app.ui.theme.*
 @Composable
 fun ResourceCard(
     postState: PostState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onDetailsClick: (Long) -> Unit = {} // <-- НОВЫЙ ПАРАМЕТР
 ) {
     val isBusy = postState.activeStage != null
 
@@ -102,7 +103,7 @@ fun ResourceCard(
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
-                    Text("Машина: ожидание...", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+                    Text("Заказ #${postState.activeStage?.orderId ?: "?"}", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
                 } else {
                     Text(
                         text = "Готов к приему",
@@ -113,14 +114,19 @@ fun ResourceCard(
             }
 
             Button(
-                onClick = { /* TODO */ },
+                onClick = {
+                    if (isBusy) {
+                        postState.activeStage?.let { onDetailsClick(it.orderId) }
+                    }
+                },
                 modifier = Modifier.align(Alignment.End),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (isBusy) animatedColor else IndigoPrimary
                 ),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(12.dp),
+                enabled = isBusy // Кнопка активна только если пост занят
             ) {
-                Text(if (isBusy) "Детали" else "Назначить", color = Color.White)
+                Text(if (isBusy) "Детали" else "Свободен", color = Color.White)
             }
         }
     }

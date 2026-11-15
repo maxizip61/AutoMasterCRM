@@ -9,7 +9,7 @@ val GraphiteDark = Color(0xFF0F172A)
 // Премиальные цвета (для Glassmorphism)
 val GlassWhite = Color(0x40FFFFFF)
 val GlassBorder = Color(0x33FFFFFF)
-val InputGrey = Color(0xFFF1F5F9)
+val InputGrey = Color(0xFF1F2937) // <-- ТЕПЕРЬ ТЕМНЫЙ (был светлый)
 
 // Статусы
 val StatusBody = Color(0xFF1565C0)
