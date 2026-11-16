@@ -3,16 +3,18 @@ package ru.automaster.app.ui.screens.dashboard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import ru.automaster.app.data.local.dao.*
 import ru.automaster.app.data.local.entity.*
 import ru.automaster.app.domain.model.PaymentType
-import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import javax.inject.Inject
 
 data class PostState(val post: PostEntity, val activeStage: OrderStageEntity? = null)
+
 data class DashboardUiState(
     val posts: List<PostState> = emptyList(),
     val inWorkOrders: List<OrderEntity> = emptyList(),
@@ -22,6 +24,7 @@ data class DashboardUiState(
     val isLoading: Boolean = true
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
     postDao: PostDao,
@@ -35,7 +38,7 @@ class DashboardViewModel @Inject constructor(
         postDao.getAll(),
         orderStageDao.getActiveStages(),
         orderDao.getAll(),
-        getDailyCashFlowFlow() // Теперь это Live Flow
+        getDailyCashFlowFlow()
     ) { posts, activeStages, allOrders, cashFlow ->
         val postStates = posts.map { post ->
             PostState(post, activeStages.find { it.postId == post.id })
@@ -49,19 +52,28 @@ class DashboardViewModel @Inject constructor(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DashboardUiState())
 
-    // ФИКС: Теперь использует Flow из DAO вместо одноразового flow {}
+    // Тикающий поток текущей даты (обновляется каждую минуту)
+    private fun getCurrentDateFlow(): Flow<LocalDate> = flow {
+        while (true) {
+            emit(LocalDate.now())
+            delay(60_000L)
+        }
+    }
+
     private fun getDailyCashFlowFlow(): Flow<Pair<Long, Long>> {
-        val zone = ZoneId.systemDefault()
-        val start = LocalDate.now(zone).atStartOfDay(zone).toInstant()
-        val end = LocalDate.now(zone).plusDays(1).atStartOfDay(zone).toInstant()
+        return getCurrentDateFlow().flatMapLatest { date ->
+            val zone = ZoneId.systemDefault()
+            val start = date.atStartOfDay(zone).toInstant()
+            val end = date.plusDays(1).atStartOfDay(zone).toInstant()
 
-        val paymentsFlow = paymentDao.getPaymentsInRangeFlow(start, end)
-        val expensesFlow = expenseDao.getExpensesInRangeFlow(start, end)
+            val paymentsFlow = paymentDao.getPaymentsInRangeFlow(start, end)
+            val expensesFlow = expenseDao.getExpensesInRangeFlow(start, end)
 
-        return combine(paymentsFlow, expensesFlow) { payments, expenses ->
-            val income = payments.sumOf { if (it.type == PaymentType.REFUND) -it.amountCents else it.amountCents }
-            val outcome = expenses.sumOf { it.amountCents }
-            income to outcome
+            combine(paymentsFlow, expensesFlow) { payments, expenses ->
+                val income = payments.sumOf { if (it.type == PaymentType.REFUND) -it.amountCents else it.amountCents }
+                val outcome = expenses.sumOf { it.amountCents }
+                income to outcome
+            }
         }
     }
 }

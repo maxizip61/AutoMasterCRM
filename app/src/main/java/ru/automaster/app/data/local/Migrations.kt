@@ -16,9 +16,35 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
 
 val MIGRATION_2_3 = object : Migration(2, 3) {
     override fun migrate(db: SupportSQLiteDatabase) {
-        // Добавляем role в таблицу назначений
         db.execSQL("ALTER TABLE order_employee_assignments ADD COLUMN role TEXT NOT NULL DEFAULT 'GENERAL'")
-        // Добавляем role в таблицу начислений
         db.execSQL("ALTER TABLE order_employee_accruals ADD COLUMN role TEXT NOT NULL DEFAULT 'GENERAL'")
+    }
+}
+
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("DROP INDEX IF EXISTS index_order_employee_assignments_orderId")
+        db.execSQL("DROP INDEX IF EXISTS index_order_employee_assignments_employeeId")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_order_employee_assignments_orderId_employeeId_role ON order_employee_assignments(orderId, employeeId, role)")
+    }
+}
+
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS `order_works` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `orderId` INTEGER NOT NULL,
+                `name` TEXT NOT NULL,
+                `type` TEXT NOT NULL,
+                `costCents` INTEGER NOT NULL,
+                `assignedEmployeeId` INTEGER,
+                `createdAt` INTEGER NOT NULL,
+                FOREIGN KEY(`orderId`) REFERENCES `orders`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                FOREIGN KEY(`assignedEmployeeId`) REFERENCES `employees`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+            )
+        """.trimIndent())
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_order_works_orderId` ON `order_works` (`orderId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_order_works_assignedEmployeeId` ON `order_works` (`assignedEmployeeId`)")
     }
 }

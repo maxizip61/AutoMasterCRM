@@ -14,7 +14,12 @@ import java.time.Instant
         ForeignKey(entity = EmployeeEntity::class, parentColumns = ["id"], childColumns = ["employeeId"], onDelete = ForeignKey.RESTRICT),
         ForeignKey(entity = OrderStageEntity::class, parentColumns = ["id"], childColumns = ["stageId"], onDelete = ForeignKey.SET_NULL)
     ],
-    indices = [Index("orderId"), Index("employeeId"), Index("stageId")]
+    indices = [
+        Index(value = ["orderId", "employeeId", "role"], unique = true),
+        Index("employeeId"),
+        Index("stageId")
+
+    ]
 )
 data class OrderEmployeeAssignmentEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,

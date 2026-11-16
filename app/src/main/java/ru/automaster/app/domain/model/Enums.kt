@@ -14,4 +14,34 @@ enum class AccrualType { PERCENT, PANEL }
 enum class TaxPaymentKind { USN_TAX, IP_FIXED_CONTRIBUTIONS, IP_EXTRA_CONTRIBUTIONS }
 enum class TaxRegime { USN_6 }
 enum class OrderUnit { PCS, LITER, KG, METER, SET }
-enum class WorkRole { BODY, PAINT, GENERAL }
+
+enum class WorkType { BODY, PREP, PAINT, MATERIAL, OTHER }
+enum class WorkRole { BODY, PREP, PAINT, GENERAL }
+
+// ===== РУССКИЕ НАЗВАНИЯ ДЛЯ UI =====
+
+fun WorkRole.displayName(): String = when (this) {
+    WorkRole.BODY -> "Кузовщик"
+    WorkRole.PREP -> "Подготовщик"
+    WorkRole.PAINT -> "Маляр"
+    WorkRole.GENERAL -> "Общее"
+}
+
+fun WorkType.displayName(): String = when (this) {
+    WorkType.BODY -> "Кузовные работы"
+    WorkType.PREP -> "Подготовка"
+    WorkType.PAINT -> "Покраска"
+    WorkType.MATERIAL -> "Материалы"
+    WorkType.OTHER -> "Прочее"
+}
+
+fun OrderStatus.displayName(): String = when (this) {
+    OrderStatus.ACCEPTED -> "Принят"
+    OrderStatus.WAITING -> "Ожидает"
+    OrderStatus.BODY -> "Кузовные работы"
+    OrderStatus.PREP -> "Подготовка"
+    OrderStatus.PAINT -> "Покраска"
+    OrderStatus.ISSUE -> "Готов к выдаче"
+    OrderStatus.DONE -> "Выдан"
+    OrderStatus.CANCELLED -> "Отменён"
+}

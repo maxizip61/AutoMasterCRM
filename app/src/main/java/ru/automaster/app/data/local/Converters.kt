@@ -32,8 +32,8 @@ class Converters {
     @TypeConverter fun toTaxPaymentKind(value: String): TaxPaymentKind = try { TaxPaymentKind.valueOf(value) } catch (e: IllegalArgumentException) { TaxPaymentKind.USN_TAX }
     @TypeConverter fun fromOrderUnit(value: OrderUnit): String = value.name
     @TypeConverter fun toOrderUnit(value: String): OrderUnit = try { OrderUnit.valueOf(value) } catch (e: IllegalArgumentException) { OrderUnit.PCS }
-
-    // ДОБАВЛЕНО: Конвертер для WorkRole
     @TypeConverter fun fromWorkRole(value: WorkRole): String = value.name
     @TypeConverter fun toWorkRole(value: String): WorkRole = try { WorkRole.valueOf(value) } catch (e: IllegalArgumentException) { WorkRole.GENERAL }
+    @TypeConverter fun fromWorkType(value: WorkType): String = value.name
+    @TypeConverter fun toWorkType(value: String): WorkType = try { WorkType.valueOf(value) } catch (e: IllegalArgumentException) { WorkType.OTHER }
 }
