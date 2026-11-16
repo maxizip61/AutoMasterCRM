@@ -258,39 +258,39 @@ class OrderDetailsViewModel @Inject constructor(
         viewModelScope.launch {
             val order = uiState.value.order ?: return@launch
             runCatching {
-                val finalAmountCents: Long = when (role) {
-                    WorkRole.BODY -> {
-                        val bodyWorksCents = orderWorkDao.getTotalByType(order.id, WorkType.BODY) ?: 0L
-                        (bodyWorksCents * employee.rateValue) / 100
+                db.withTransaction { // <-- ТРАНЗАКЦИЯ защищает от race condition
+                    val finalAmountCents: Long = when (role) {
+                        WorkRole.BODY -> {
+                            val bodyWorksCents = orderWorkDao.getTotalByType(order.id, WorkType.BODY) ?: 0L
+                            (bodyWorksCents * employee.rateValue) / 100
+                        }
+                        WorkRole.PREP -> employee.rateValue * 100 * panelsCount
+                        WorkRole.PAINT -> employee.rateValue * 100 * panelsCount
+                        WorkRole.GENERAL -> employee.rateValue * 100 * panelsCount
                     }
-                    WorkRole.PREP -> employee.rateValue * 100 * panelsCount
-                    WorkRole.PAINT -> employee.rateValue * 100 * panelsCount
-                    WorkRole.GENERAL -> employee.rateValue * 100 * panelsCount
-                }
 
-                if (finalAmountCents <= 0L) {
-                    _message.value = "Сумма начисления 0. Проверьте работы и ставку мастера."
-                    return@runCatching
-                }
+                    if (finalAmountCents <= 0L) {
+                        throw IllegalStateException("Сумма начисления 0. Проверьте работы и ставку мастера.")
+                    }
 
-                val accrualType = if (role == WorkRole.BODY) AccrualType.PERCENT else AccrualType.PANEL
+                    val accrualType = if (role == WorkRole.BODY) AccrualType.PERCENT else AccrualType.PANEL
 
-                accrualDao.insert(
-                    OrderEmployeeAccrualEntity(
-                        orderId = order.id, employeeId = employee.id,
-                        role = role,
-                        type = accrualType,
-                        percentBps = if (role == WorkRole.BODY) employee.rateValue.toInt() else null,
-                        panelCents = if (role != WorkRole.BODY) employee.rateValue else null,
-                        panelsCount = if (role != WorkRole.BODY) panelsCount else null,
-                        amountCents = finalAmountCents, closedAt = Instant.now(),
-                        idempotencyKey = UUID.randomUUID().toString()
+                    accrualDao.insert(
+                        OrderEmployeeAccrualEntity(
+                            orderId = order.id, employeeId = employee.id,
+                            role = role,
+                            type = accrualType,
+                            percentBps = if (role == WorkRole.BODY) employee.rateValue.toInt() else null,
+                            panelCents = if (role != WorkRole.BODY) employee.rateValue else null,
+                            panelsCount = if (role != WorkRole.BODY) panelsCount else null,
+                            amountCents = finalAmountCents, closedAt = Instant.now(),
+                            idempotencyKey = UUID.randomUUID().toString()
+                        )
                     )
-                )
+                }
             }.onFailure { e -> _message.value = "Ошибка начисления: ${e.message}" }
         }
     }
-
     fun addWork(name: String, type: WorkType, costRub: Long) {
         viewModelScope.launch {
             val order = uiState.value.order ?: return@launch
@@ -307,8 +307,16 @@ class OrderDetailsViewModel @Inject constructor(
 
     fun deleteWork(work: OrderWorkEntity) {
         viewModelScope.launch {
-            runCatching { orderWorkDao.delete(work) }
-                .onFailure { e -> _message.value = "Ошибка удаления: ${e.message}" }
+            runCatching {
+                val order = uiState.value.order ?: return@runCatching
+                // Проверяем, есть ли уже начисления по заказу
+                val existingAccruals = accrualDao.getByOrder(order.id).first()
+                if (existingAccruals.isNotEmpty()) {
+                    _message.value = "Нельзя удалить работу: по заказу уже есть начисления ЗП. Сначала отмените начисления."
+                    return@runCatching
+                }
+                orderWorkDao.delete(work)
+            }.onFailure { e -> _message.value = "Ошибка удаления: ${e.message}" }
         }
     }
 
