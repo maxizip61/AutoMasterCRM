@@ -20,7 +20,6 @@ class FileCleanupWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         return try {
-            // 1. Удаляем файлы, которые в очереди на удаление
             val tasks = fileDeletionTaskDao.getAll()
             var hasRetry = false
 
@@ -35,18 +34,21 @@ class FileCleanupWorker @AssistedInject constructor(
                             lastError = "Failed to delete file"
                         )
                         if (updatedTask.attempts >= 5) {
-                            fileDeletionTaskDao.delete(task)
+                            // После 5 попыток прекращаем мучить систему — оставляем запись
+                            // для ручного разбора владельцем через БД.
+                            fileDeletionTaskDao.update(updatedTask)
+                            // Без hasRetry=true — за эту запись больше не боремся.
                         } else {
-                            fileDeletionTaskDao.insert(updatedTask)
+                            fileDeletionTaskDao.update(updatedTask)
                             hasRetry = true
                         }
                     }
                 } else {
+                    // Файла уже нет — задачу закрываем.
                     fileDeletionTaskDao.delete(task)
                 }
             }
 
-            // 2. Умная очистка брошенных файлов
             sweepOrphanFiles()
 
             if (hasRetry) Result.retry() else Result.success()
@@ -58,7 +60,6 @@ class FileCleanupWorker @AssistedInject constructor(
     private suspend fun sweepOrphanFiles() {
         val dbPaths = photoDao.getAllFilePaths().toSet()
         val photosDir = File(applicationContext.filesDir, "photos")
-
         if (!photosDir.exists()) return
 
         val twoHoursAgo = System.currentTimeMillis() - (2 * 60 * 60 * 1000)
@@ -66,6 +67,8 @@ class FileCleanupWorker @AssistedInject constructor(
         photosDir.walkTopDown().forEach { file ->
             if (file.isFile && file.extension == "jpg") {
                 val relativePath = file.absolutePath.substringAfter("files/")
+                // Удаляем только «сиротские» файлы, которых нет в БД и которые
+                // старше 2 часов — чтобы не убить pending-файл открытой камеры.
                 if (!dbPaths.contains(relativePath) && file.lastModified() < twoHoursAgo) {
                     file.delete()
                 }

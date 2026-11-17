@@ -18,13 +18,20 @@ enum class OrderUnit { PCS, LITER, KG, METER, SET }
 enum class WorkType { BODY, PREP, PAINT, MATERIAL, OTHER }
 enum class WorkRole { BODY, PREP, PAINT, GENERAL }
 
+/**
+ * Решение владельца после закрытия этапа.
+ * Само по себе не хранится — только как входной параметр
+ * completeCurrentStage().
+ */
+enum class StageDecision { NEED_MORE_POST, READY_FOR_ISSUE }
+
 // ===== РУССКИЕ НАЗВАНИЯ ДЛЯ UI =====
 
 fun WorkRole.displayName(): String = when (this) {
     WorkRole.BODY -> "Кузовщик"
     WorkRole.PREP -> "Подготовщик"
     WorkRole.PAINT -> "Маляр"
-    WorkRole.GENERAL -> "Общее"
+    WorkRole.GENERAL -> "Универсал"
 }
 
 fun WorkType.displayName(): String = when (this) {
@@ -44,4 +51,11 @@ fun OrderStatus.displayName(): String = when (this) {
     OrderStatus.ISSUE -> "Готов к выдаче"
     OrderStatus.DONE -> "Выдан"
     OrderStatus.CANCELLED -> "Отменён"
+}
+
+fun StagePhase.displayName(): String = when (this) {
+    StagePhase.BODY -> "Кузовные работы"
+    StagePhase.PREP -> "Подготовка"
+    StagePhase.PAINT -> "Покраска"
+    StagePhase.ISSUE -> "Выдача"
 }
