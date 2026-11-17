@@ -206,15 +206,6 @@ class OrderDetailsViewModel @Inject constructor(
         }
     }
 
-    @Deprecated("Use assignToPost(post, phase)")
-    fun assignToPost(post: PostEntity) {
-        val defaultPhase = when (post.type) {
-            PostType.PAINT -> StagePhase.PAINT
-            PostType.PREP -> StagePhase.BODY
-        }
-        assignToPost(post, defaultPhase)
-    }
-
     fun completeCurrentStage(decision: StageDecision) {
         viewModelScope.launch {
             withContext(NonCancellable) {
@@ -270,9 +261,7 @@ class OrderDetailsViewModel @Inject constructor(
                     db.withTransaction {
                         val order = uiState.value.order ?: return@withTransaction
                         if (order.status != OrderStatus.WAITING) {
-                            throw IllegalStateException(
-                                "Доступно только из статуса «Ожидает»"
-                            )
+                            throw IllegalStateException("Доступно только из статуса «Ожидает»")
                         }
                         val now = Instant.now()
                         orderDao.update(order.copy(status = OrderStatus.ISSUE))
@@ -339,12 +328,10 @@ class OrderDetailsViewModel @Inject constructor(
         viewModelScope.launch {
             val order = uiState.value.order ?: return@launch
             runCatching {
-                var categoryId = expenseCategoryDao.getFirstCategoryId()
-                if (categoryId == null) {
-                    categoryId = expenseCategoryDao.insert(
+                val categoryId: Long = expenseCategoryDao.getFirstCategoryId()
+                    ?: expenseCategoryDao.insert(
                         ExpenseCategoryEntity(name = "Прочее", defaultInclude = true)
                     )
-                }
                 expenseDao.insert(
                     ExpenseEntity(
                         amountCents = amountRub * 100, date = Instant.now(),
@@ -389,14 +376,8 @@ class OrderDetailsViewModel @Inject constructor(
 
     /**
      * Начисление ЗП по BR-1 / BR-2.
-     *
-     * @param rate Для BODY — процент (например, 30). Для PREP/PAINT — рубли
-     *             за деталь (например, 1500).
-     * @param panels Количество деталей. Учитывается только для PREP/PAINT,
-     *               для BODY игнорируется.
-     *
-     * Идемпотентность: ключ "$orderId:$employeeId:$stageId:$role".
-     * Повторный вызов с тем же ключом не создаёт дубль.
+     * @param rate BODY — процент (30); PREP/PAINT — рубли за деталь (1500).
+     * @param panels количество деталей, для BODY игнорируется.
      */
     fun addAccrual(
         employee: EmployeeEntity,
@@ -421,24 +402,19 @@ class OrderDetailsViewModel @Inject constructor(
                         )
                     val stageId = activeStage.id
 
-                    val (amountCents, percentBps, panelCents, panelsCount) = when (role) {
+                    val tuple = when (role) {
                         WorkRole.BODY -> {
                             val base = orderWorkDao
                                 .getTotalByType(order.id, WorkType.BODY) ?: 0L
                             if (base <= 0L) {
                                 throw IllegalStateException(
-                                    "Сначала внесите кузовные работы в блок " +
-                                            "«Работы по заказу»"
+                                    "Сначала внесите кузовные работы в блок «Работы по заказу»"
                                 )
                             }
-                            val amount = base * rate / 100
-                            val bps = (rate * 100).toInt()
-                            AccrualTuple(amount, bps, null, null)
+                            AccrualTuple(base * rate / 100, (rate * 100).toInt(), null, null)
                         }
                         WorkRole.PREP, WorkRole.PAINT, WorkRole.GENERAL -> {
-                            val amount = rate * panels * 100
-                            val cents = rate * 100
-                            AccrualTuple(amount, null, cents, panels)
+                            AccrualTuple(rate * panels * 100, null, rate * 100, panels)
                         }
                     }
 
@@ -451,10 +427,10 @@ class OrderDetailsViewModel @Inject constructor(
                             role = role,
                             type = if (role == WorkRole.BODY)
                                 AccrualType.PERCENT else AccrualType.PANEL,
-                            percentBps = percentBps,
-                            panelCents = panelCents,
-                            panelsCount = panelsCount,
-                            amountCents = amountCents,
+                            percentBps = tuple.percentBps,
+                            panelCents = tuple.panelCents,
+                            panelsCount = tuple.panelsCount,
+                            amountCents = tuple.amountCents,
                             closedAt = Instant.now(),
                             idempotencyKey = key
                         )
@@ -479,17 +455,6 @@ class OrderDetailsViewModel @Inject constructor(
         val panelsCount: Int?
     )
 
-    /**
-     * @Deprecated — старая сигнатура для совместимости со старым UI.
-     * Удалить после шага 2.3.
-     * Берёт rate из employee.rateValue и работает как раньше
-     * (BODY — процент, PREP/PAINT — рубли за деталь).
-     */
-    @Deprecated("Use addAccrual(employee, role, rate, panels)")
-    fun addAccrual(employee: EmployeeEntity, role: WorkRole, panelsCount: Int = 1) {
-        addAccrual(employee, role, employee.rateValue, panelsCount)
-    }
-
     fun addWork(name: String, type: WorkType, costRub: Long) {
         viewModelScope.launch {
             val order = uiState.value.order ?: return@launch
@@ -509,10 +474,6 @@ class OrderDetailsViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Удаление работы. Проверка начислений — ТОЛЬКО по релевантной роли
-     * (п. 2.7).
-     */
     fun deleteWork(work: OrderWorkEntity) {
         viewModelScope.launch {
             runCatching {
@@ -525,8 +486,7 @@ class OrderDetailsViewModel @Inject constructor(
                 }
                 if (relevantRole != null) {
                     val accruals = accrualDao.getByOrder(order.id).first()
-                    val hasRelevant = accruals.any { it.role == relevantRole }
-                    if (hasRelevant) {
+                    if (accruals.any { it.role == relevantRole }) {
                         _message.value =
                             "Нельзя удалить работу: по роли ${relevantRole.displayName()} " +
                                     "уже есть начисления. Сначала оформите сторно."
