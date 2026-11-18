@@ -30,16 +30,28 @@ fun AppNavHost(
         startDestination = Screen.Dashboard.route,
         modifier = modifier,
         enterTransition = {
-            slideInHorizontally(initialOffsetX = { it / 4 }, animationSpec = tween(Motion.Medium)) + fadeIn(animationSpec = tween(Motion.Medium))
+            slideInHorizontally(
+                initialOffsetX = { it / 4 },
+                animationSpec = tween(Motion.Medium)
+            ) + fadeIn(animationSpec = tween(Motion.Medium))
         },
         exitTransition = {
-            slideOutHorizontally(targetOffsetX = { -it / 4 }, animationSpec = tween(Motion.Medium)) + fadeOut(animationSpec = tween(Motion.Medium))
+            slideOutHorizontally(
+                targetOffsetX = { -it / 4 },
+                animationSpec = tween(Motion.Medium)
+            ) + fadeOut(animationSpec = tween(Motion.Medium))
         },
         popEnterTransition = {
-            slideInHorizontally(initialOffsetX = { -it / 4 }, animationSpec = tween(Motion.Medium)) + fadeIn(animationSpec = tween(Motion.Medium))
+            slideInHorizontally(
+                initialOffsetX = { -it / 4 },
+                animationSpec = tween(Motion.Medium)
+            ) + fadeIn(animationSpec = tween(Motion.Medium))
         },
         popExitTransition = {
-            slideOutHorizontally(targetOffsetX = { it / 4 }, animationSpec = tween(Motion.Medium)) + fadeOut(animationSpec = tween(Motion.Medium))
+            slideOutHorizontally(
+                targetOffsetX = { it / 4 },
+                animationSpec = tween(Motion.Medium)
+            ) + fadeOut(animationSpec = tween(Motion.Medium))
         }
     ) {
         // 1. Главный экран
@@ -48,7 +60,8 @@ fun AppNavHost(
                 onNavigateToAddOrder = { navController.navigate(Screen.AddOrder.route) },
                 onNavigateToOrderDetails = { orderId ->
                     navController.navigate(Screen.OrderDetails.createRoute(orderId))
-                }
+                },
+                onNavigateToSettings = { navController.navigate(Screen.Settings.route) }
             )
         }
 

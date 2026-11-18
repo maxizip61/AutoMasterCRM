@@ -13,13 +13,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.automaster.app.data.backup.BackupManager
+import ru.automaster.app.data.backup.SecureBackupExporter
 import java.io.File
 import javax.inject.Inject
+
+enum class BackupFormat { ENCRYPTED, PLAIN_ZIP, UNKNOWN }
 
 @HiltViewModel
 class BackupViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val backupManager: BackupManager
+    private val backupManager: BackupManager,
+    private val secureExporter: SecureBackupExporter
 ) : ViewModel() {
 
     private val _localBackups = MutableStateFlow<List<File>>(emptyList())
@@ -31,6 +35,9 @@ class BackupViewModel @Inject constructor(
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
 
+    private val _restartRequired = MutableStateFlow(false)
+    val restartRequired: StateFlow<Boolean> = _restartRequired.asStateFlow()
+
     init {
         loadBackups()
     }
@@ -41,46 +48,86 @@ class BackupViewModel @Inject constructor(
         }
     }
 
-    fun createBackupToUri(uri: Uri, onComplete: (Boolean) -> Unit) {
+    /** Формат по первым байтам: "AMB1" — шифрованный, "PK" — старый ZIP. */
+    suspend fun detectFormat(uri: Uri): BackupFormat = withContext(Dispatchers.IO) {
+        runCatching {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                val head = ByteArray(4)
+                var read = 0
+                while (read < 4) {
+                    val n = input.read(head, read, 4 - read)
+                    if (n < 0) break
+                    read += n
+                }
+                when {
+                    read >= 4 &&
+                            head[0] == 'A'.code.toByte() &&
+                            head[1] == 'M'.code.toByte() &&
+                            head[2] == 'B'.code.toByte() &&
+                            head[3] == '1'.code.toByte() -> BackupFormat.ENCRYPTED
+
+                    read >= 2 &&
+                            head[0] == 'P'.code.toByte() &&
+                            head[1] == 'K'.code.toByte() -> BackupFormat.PLAIN_ZIP
+
+                    else -> BackupFormat.UNKNOWN
+                }
+            } ?: BackupFormat.UNKNOWN
+        }.getOrDefault(BackupFormat.UNKNOWN)
+    }
+
+    /** Шифрованный экспорт. Пароль затирается в памяти после использования. */
+    fun exportEncrypted(uri: Uri, password: CharArray) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                withContext(Dispatchers.IO) {
-                    context.contentResolver.openOutputStream(uri)?.use { output ->
-                        val result = backupManager.createBackup(output)
-                        if (result.isFailure) throw result.exceptionOrNull() ?: Exception("Ошибка")
-                    } ?: throw Exception("Не удалось открыть файл")
-                }
-                _message.value = "Бэкап успешно создан!"
-                onComplete(true)
-            } catch (e: Exception) {
-                _message.value = "Ошибка: ${e.message}"
-                onComplete(false)
+                secureExporter.export(uri, password)
+                    .onSuccess { bytes ->
+                        _message.value = "Зашифрованный бэкап сохранён (${bytes / 1024} КБ)"
+                    }
+                    .onFailure { e ->
+                        _message.value = "Ошибка: ${e.message}"
+                    }
             } finally {
+                password.fill(' ')
+                _isLoading.value = false
+                loadBackups()
+            }
+        }
+    }
+
+    /** Восстановление: шифрованный .amb или старый незашифрованный .zip. */
+    fun restore(uri: Uri, password: CharArray?, encrypted: Boolean) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val result = if (encrypted) {
+                    secureExporter.import(uri, password ?: CharArray(0))
+                } else {
+                    withContext(Dispatchers.IO) {
+                        runCatching {
+                            context.contentResolver.openInputStream(uri)?.use { input ->
+                                backupManager.restoreBackup(input).getOrThrow()
+                            } ?: error("Не удалось открыть файл")
+                        }
+                    }
+                }
+                result
+                    .onSuccess {
+                        _restartRequired.value = true
+                    }
+                    .onFailure { e ->
+                        _message.value = "Ошибка восстановления: ${e.message}"
+                    }
+            } finally {
+                password?.fill(' ')
                 _isLoading.value = false
             }
         }
     }
 
-    fun restoreFromUri(uri: Uri, onComplete: (Boolean) -> Unit) {
-        viewModelScope.launch {
-            _isLoading.value = true
-            try {
-                withContext(Dispatchers.IO) {
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        val result = backupManager.restoreBackup(input)
-                        if (result.isFailure) throw result.exceptionOrNull() ?: Exception("Ошибка")
-                    } ?: throw Exception("Не удалось открыть файл")
-                }
-                _message.value = "База данных восстановлена! Требуется перезапуск."
-                onComplete(true)
-            } catch (e: Exception) {
-                _message.value = "Ошибка восстановления: ${e.message}"
-                onComplete(false)
-            } finally {
-                _isLoading.value = false
-            }
-        }
+    fun notify(text: String) {
+        _message.value = text
     }
 
     fun clearMessage() {
