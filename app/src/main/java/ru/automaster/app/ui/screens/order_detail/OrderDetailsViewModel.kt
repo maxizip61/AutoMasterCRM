@@ -47,11 +47,11 @@ import ru.automaster.app.data.local.entity.PostEntity
 import ru.automaster.app.data.local.entity.StatusHistoryEntity
 import ru.automaster.app.data.storage.PhotoFileManager
 import ru.automaster.app.domain.model.AccrualType
+import ru.automaster.app.domain.model.EmployeeSpecialty
 import ru.automaster.app.domain.model.OrderStatus
 import ru.automaster.app.domain.model.PaymentMethod
 import ru.automaster.app.domain.model.PaymentType
 import ru.automaster.app.domain.model.PhotoType
-import ru.automaster.app.domain.model.PostType
 import ru.automaster.app.domain.model.StageDecision
 import ru.automaster.app.domain.model.StagePhase
 import ru.automaster.app.domain.model.StageStatus
@@ -105,9 +105,7 @@ class OrderDetailsViewModel @Inject constructor(
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
 
-    fun clearMessage() {
-        _message.value = null
-    }
+    fun clearMessage() { _message.value = null }
 
     val uiState: StateFlow<OrderDetailsUiState> = combine(
         orderDao.getByIdFlow(orderId),
@@ -146,25 +144,32 @@ class OrderDetailsViewModel @Inject constructor(
         initialValue = OrderDetailsUiState()
     )
 
-    fun assignToPost(post: PostEntity, phase: StagePhase) {
+    /**
+     * Постановка машины на пост.
+     * Фаза работ выводится из специализации мастера — спрашивать не нужно.
+     * Одновременно создаёт назначение мастера на заказ, если его ещё нет.
+     */
+    fun assignMasterToPost(employee: EmployeeEntity, post: PostEntity) {
         viewModelScope.launch {
             withContext(NonCancellable) {
                 runCatching {
-                    when (post.type) {
-                        PostType.PAINT -> if (phase != StagePhase.PAINT) {
-                            _message.value = "На покрасочную камеру — только покраска"
-                            return@runCatching
-                        }
-                        PostType.PREP -> if (phase != StagePhase.BODY &&
-                            phase != StagePhase.PREP
-                        ) {
-                            _message.value = "На подготовительный пост — только кузов/подготовка"
-                            return@runCatching
-                        }
+                    val role = EmployeeSpecialty.roleOf(
+                        employee.position, employee.compensationType
+                    )
+                    if (role == WorkRole.GENERAL) {
+                        _message.value =
+                            "У ${employee.fullName} не определена специализация. " +
+                                    "Уточните её в Настройках → Сотрудники цеха."
+                        return@runCatching
                     }
-
+                    if (!EmployeeSpecialty.canWorkOn(role, post.type)) {
+                        _message.value = EmployeeSpecialty.incompatibilityReason(role, post.type)
+                        return@runCatching
+                    }
+                    val phase = EmployeeSpecialty.phaseOf(role) ?: return@runCatching
                     val order = uiState.value.order ?: return@runCatching
                     val now = Instant.now()
+
                     val newStatus = when (phase) {
                         StagePhase.BODY -> OrderStatus.BODY
                         StagePhase.PREP -> OrderStatus.PREP
@@ -172,6 +177,7 @@ class OrderDetailsViewModel @Inject constructor(
                         StagePhase.ISSUE -> return@runCatching
                     }
 
+                    val postName = post.displayName.ifEmpty { post.name.name }
                     val newStage = OrderStageEntity(
                         orderId = order.id,
                         phase = phase,
@@ -187,18 +193,31 @@ class OrderDetailsViewModel @Inject constructor(
                     db.withTransaction {
                         orderStageDao.reassign(order.id, now, newStage)
                         orderDao.update(order.copy(status = newStatus))
+
+                        val existing = assignmentDao.getByOrder(order.id).first()
+                        if (existing.none { it.employeeId == employee.id }) {
+                            assignmentDao.insert(
+                                OrderEmployeeAssignmentEntity(
+                                    orderId = order.id,
+                                    employeeId = employee.id,
+                                    role = role,
+                                    createdAt = now
+                                )
+                            )
+                        }
+
                         statusHistoryDao.insert(
                             StatusHistoryEntity(
                                 orderId = order.id,
                                 oldStatus = order.status,
                                 newStatus = newStatus,
                                 changedAt = now,
-                                comment = "Назначен на пост " +
-                                        "${post.displayName.ifEmpty { post.name.name }} " +
+                                comment = "${employee.fullName} → $postName " +
                                         "(${phase.displayName()})"
                             )
                         )
                     }
+                    _message.value = "${employee.fullName} · $postName · ${phase.displayName()}"
                 }.onFailure { e ->
                     _message.value = "Ошибка назначения: ${e.message}"
                 }
@@ -345,14 +364,24 @@ class OrderDetailsViewModel @Inject constructor(
         }
     }
 
-    fun assignEmployee(employee: EmployeeEntity, role: WorkRole) {
+    /** Добавляет мастера на заказ без смены поста (например, второй маляр). */
+    fun assignEmployee(employee: EmployeeEntity) {
         viewModelScope.launch {
             runCatching {
                 val order = uiState.value.order ?: return@runCatching
-                val existing = assignmentDao.getByOrder(order.id).first()
-                if (existing.any { it.employeeId == employee.id && it.role == role }) {
+                val role = EmployeeSpecialty.roleOf(
+                    employee.position, employee.compensationType
+                )
+                if (role == WorkRole.GENERAL) {
                     _message.value =
-                        "${employee.fullName} уже назначен на роль ${role.displayName()}"
+                        "У ${employee.fullName} не определена специализация. " +
+                                "Уточните её в Настройках → Сотрудники цеха."
+                    return@runCatching
+                }
+                val existing = assignmentDao.getByOrder(order.id).first()
+                if (existing.any { it.employeeId == employee.id }) {
+                    _message.value =
+                        "${employee.fullName} уже назначен как ${role.displayName()}"
                     return@runCatching
                 }
                 assignmentDao.insert(
@@ -363,6 +392,7 @@ class OrderDetailsViewModel @Inject constructor(
                         createdAt = Instant.now()
                     )
                 )
+                _message.value = "${employee.fullName} — ${role.displayName()}"
             }.onFailure { e -> _message.value = "Ошибка назначения: ${e.message}" }
         }
     }
@@ -375,19 +405,21 @@ class OrderDetailsViewModel @Inject constructor(
     }
 
     /**
-     * Начисление ЗП по BR-1 / BR-2.
-     * @param rate BODY — процент (30); PREP/PAINT — рубли за деталь (1500).
-     * @param panels количество деталей, для BODY игнорируется.
+     * Начисление ЗП. Роль из профиля мастера.
+     * BODY → процент от суммы кузовных работ. PREP/PAINT → фикс за деталь.
      */
-    fun addAccrual(
-        employee: EmployeeEntity,
-        role: WorkRole,
-        rate: Long,
-        panels: Int = 1
-    ) {
+    fun addAccrual(employee: EmployeeEntity, rate: Long, panels: Int = 1) {
         viewModelScope.launch {
             val order = uiState.value.order ?: return@launch
             runCatching {
+                val role = EmployeeSpecialty.roleOf(
+                    employee.position, employee.compensationType
+                )
+                if (role == WorkRole.GENERAL) {
+                    throw IllegalStateException(
+                        "У ${employee.fullName} не определена специализация."
+                    )
+                }
                 if (rate <= 0L) {
                     throw IllegalArgumentException("Ставка должна быть больше нуля")
                 }
@@ -398,7 +430,7 @@ class OrderDetailsViewModel @Inject constructor(
                 db.withTransaction {
                     val activeStage = orderStageDao.getActiveStageForOrder(order.id)
                         ?: throw IllegalStateException(
-                            "Нет активного этапа. Назначьте заказ на пост перед начислением."
+                            "Нет активного этапа. Поставьте машину на пост перед начислением."
                         )
                     val stageId = activeStage.id
 
@@ -413,13 +445,11 @@ class OrderDetailsViewModel @Inject constructor(
                             }
                             AccrualTuple(base * rate / 100, (rate * 100).toInt(), null, null)
                         }
-                        WorkRole.PREP, WorkRole.PAINT, WorkRole.GENERAL -> {
+                        WorkRole.PREP, WorkRole.PAINT, WorkRole.GENERAL ->
                             AccrualTuple(rate * panels * 100, null, rate * 100, panels)
-                        }
                     }
 
                     val key = "$orderId:${employee.id}:$stageId:${role.name}"
-
                     val insertId = accrualDao.insert(
                         OrderEmployeeAccrualEntity(
                             orderId = order.id,
@@ -435,16 +465,13 @@ class OrderDetailsViewModel @Inject constructor(
                             idempotencyKey = key
                         )
                     )
-
                     if (insertId == -1L) {
                         throw IllegalStateException(
                             "По этому этапу уже начислено (${role.displayName()})"
                         )
                     }
                 }
-            }.onFailure { e ->
-                _message.value = e.message ?: "Ошибка начисления"
-            }
+            }.onFailure { e -> _message.value = e.message ?: "Ошибка начисления" }
         }
     }
 
@@ -461,16 +488,11 @@ class OrderDetailsViewModel @Inject constructor(
             runCatching {
                 orderWorkDao.insert(
                     OrderWorkEntity(
-                        orderId = order.id,
-                        name = name,
-                        type = type,
-                        costCents = costRub * 100,
-                        createdAt = Instant.now()
+                        orderId = order.id, name = name, type = type,
+                        costCents = costRub * 100, createdAt = Instant.now()
                     )
                 )
-            }.onFailure { e ->
-                _message.value = "Ошибка добавления работы: ${e.message}"
-            }
+            }.onFailure { e -> _message.value = "Ошибка добавления работы: ${e.message}" }
         }
     }
 
@@ -489,14 +511,12 @@ class OrderDetailsViewModel @Inject constructor(
                     if (accruals.any { it.role == relevantRole }) {
                         _message.value =
                             "Нельзя удалить работу: по роли ${relevantRole.displayName()} " +
-                                    "уже есть начисления. Сначала оформите сторно."
+                                    "уже есть начисления."
                         return@runCatching
                     }
                 }
                 orderWorkDao.delete(work)
-            }.onFailure { e ->
-                _message.value = "Ошибка удаления: ${e.message}"
-            }
+            }.onFailure { e -> _message.value = "Ошибка удаления: ${e.message}" }
         }
     }
 
@@ -520,9 +540,7 @@ class OrderDetailsViewModel @Inject constructor(
                             filePath = relativePath, createdAt = Instant.now()
                         )
                     )
-                }.onFailure { e ->
-                    _message.value = "Ошибка фото: ${e.message}"
-                }
+                }.onFailure { e -> _message.value = "Ошибка фото: ${e.message}" }
             }
         }
         currentPhotoFile = null

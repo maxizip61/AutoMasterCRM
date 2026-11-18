@@ -11,16 +11,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,36 +21,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -68,10 +31,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import ru.automaster.app.data.local.entity.EmployeeEntity
-import ru.automaster.app.data.local.entity.PostEntity
+import ru.automaster.app.domain.model.EmployeeSpecialty
 import ru.automaster.app.domain.model.PostType
 import ru.automaster.app.domain.model.StageDecision
-import ru.automaster.app.domain.model.StagePhase
 import ru.automaster.app.domain.model.WorkRole
 import ru.automaster.app.domain.model.WorkType
 import ru.automaster.app.domain.model.displayName
@@ -97,18 +59,14 @@ fun OrderDetailsScreen(
     var showBottomSheet by remember { mutableStateOf(false) }
     var bottomSheetMode by remember { mutableStateOf("POST") }
 
+    // Шаг 1 выбора поста: сначала мастер, потом пост
+    var postPickEmployee by remember { mutableStateOf<EmployeeEntity?>(null) }
+
     var showPaymentDialog by remember { mutableStateOf(false) }
     var showExpenseDialog by remember { mutableStateOf(false) }
     var showAddWorkDialog by remember { mutableStateOf(false) }
-
-    var postPendingPhase by remember { mutableStateOf<PostEntity?>(null) }
     var showStageDecisionDialog by remember { mutableStateOf(false) }
-
     var employeeToAccrue by remember { mutableStateOf<EmployeeEntity?>(null) }
-    var accrualRole by remember { mutableStateOf(WorkRole.BODY) }
-
-    var employeeToAssign by remember { mutableStateOf<EmployeeEntity?>(null) }
-    var showRoleDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(message) {
         message?.let {
@@ -276,37 +234,25 @@ fun OrderDetailsScreen(
 
                             Spacer(modifier = Modifier.height(8.dp))
                             val bodyTotal = state.works
-                                .filter { it.type == WorkType.BODY }
-                                .sumOf { it.costCents }
+                                .filter { it.type == WorkType.BODY }.sumOf { it.costCents }
                             val prepTotal = state.works
-                                .filter { it.type == WorkType.PREP }
-                                .sumOf { it.costCents }
+                                .filter { it.type == WorkType.PREP }.sumOf { it.costCents }
                             val paintTotal = state.works
-                                .filter { it.type == WorkType.PAINT }
-                                .sumOf { it.costCents }
+                                .filter { it.type == WorkType.PAINT }.sumOf { it.costCents }
                             val materialTotal = state.works
-                                .filter { it.type == WorkType.MATERIAL }
-                                .sumOf { it.costCents }
+                                .filter { it.type == WorkType.MATERIAL }.sumOf { it.costCents }
 
                             if (bodyTotal > 0) RowLabelValue(
-                                "Кузовные:",
-                                MoneyFormatter.format(bodyTotal),
-                                Color(0xFF1565C0)
+                                "Кузовные:", MoneyFormatter.format(bodyTotal), Color(0xFF1565C0)
                             )
                             if (prepTotal > 0) RowLabelValue(
-                                "Подготовка:",
-                                MoneyFormatter.format(prepTotal),
-                                Color(0xFFEF6C00)
+                                "Подготовка:", MoneyFormatter.format(prepTotal), Color(0xFFEF6C00)
                             )
                             if (paintTotal > 0) RowLabelValue(
-                                "Покраска:",
-                                MoneyFormatter.format(paintTotal),
-                                Color(0xFFC62828)
+                                "Покраска:", MoneyFormatter.format(paintTotal), Color(0xFFC62828)
                             )
                             if (materialTotal > 0) RowLabelValue(
-                                "Материалы:",
-                                MoneyFormatter.format(materialTotal),
-                                Color(0xFF6B7280)
+                                "Материалы:", MoneyFormatter.format(materialTotal), Color(0xFF6B7280)
                             )
 
                             Spacer(modifier = Modifier.height(8.dp))
@@ -350,18 +296,15 @@ fun OrderDetailsScreen(
                                 MaterialTheme.colorScheme.onSurface
                             )
                             RowLabelValue(
-                                "Оплачено клиентом:",
-                                MoneyFormatter.format(totalPaid),
+                                "Оплачено клиентом:", MoneyFormatter.format(totalPaid),
                                 MaterialTheme.colorScheme.primary
                             )
                             RowLabelValue(
-                                "Расходы:",
-                                MoneyFormatter.format(totalSpent),
+                                "Расходы:", MoneyFormatter.format(totalSpent),
                                 MaterialTheme.colorScheme.error
                             )
                             RowLabelValue(
-                                "ЗП мастерам:",
-                                MoneyFormatter.format(totalSalary),
+                                "ЗП мастерам:", MoneyFormatter.format(totalSalary),
                                 MaterialTheme.colorScheme.tertiary
                             )
 
@@ -425,9 +368,7 @@ fun OrderDetailsScreen(
                                 )
                             } else {
                                 state.assignments.forEach { assignment ->
-                                    val empName = state.employees
-                                        .find { it.id == assignment.employeeId }
-                                        ?.fullName ?: "Сотрудник"
+                                    val emp = state.employees.find { it.id == assignment.employeeId }
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -435,10 +376,12 @@ fun OrderDetailsScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Column {
+                                        Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                empName,
-                                                color = MaterialTheme.colorScheme.onSurface,
+                                                emp?.fullName ?: "Мастер в архиве",
+                                                color = if (emp == null)
+                                                    MaterialTheme.colorScheme.error
+                                                else MaterialTheme.colorScheme.onSurface,
                                                 fontWeight = FontWeight.Bold
                                             )
                                             Text(
@@ -446,13 +389,24 @@ fun OrderDetailsScreen(
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 style = MaterialTheme.typography.bodySmall
                                             )
+                                            if (emp != null &&
+                                                EmployeeSpecialty.roleOf(
+                                                    emp.position, emp.compensationType
+                                                ) != assignment.role
+                                            ) {
+                                                Text(
+                                                    "Специализация изменена — снимите и назначьте заново",
+                                                    color = MaterialTheme.colorScheme.error,
+                                                    style = MaterialTheme.typography.bodySmall
+                                                )
+                                            }
                                         }
                                         IconButton(
                                             onClick = { viewModel.removeAssignment(assignment) }
                                         ) {
                                             Icon(
                                                 Icons.Default.Delete,
-                                                contentDescription = "Удалить",
+                                                contentDescription = "Снять с заказа",
                                                 tint = MaterialTheme.colorScheme.error
                                             )
                                         }
@@ -473,7 +427,7 @@ fun OrderDetailsScreen(
                                 colors = ButtonDefaults.outlinedButtonColors(
                                     contentColor = MaterialTheme.colorScheme.onSurface
                                 )
-                            ) { Text("+ Назначить сотрудника") }
+                            ) { Text("+ Добавить мастера на заказ") }
                         }
                     }
                 }
@@ -503,7 +457,7 @@ fun OrderDetailsScreen(
                                 state.accruals.forEach { accrual ->
                                     val empName = state.employees
                                         .find { it.id == accrual.employeeId }
-                                        ?.fullName ?: "Сотрудник"
+                                        ?.fullName ?: "Мастер"
                                     RowLabelValue(
                                         "$empName (${accrual.role.displayName()})",
                                         MoneyFormatter.format(accrual.amountCents)
@@ -543,10 +497,9 @@ fun OrderDetailsScreen(
                             )
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
-                                val dateStr = ReportDateFormatter
-                                    .format(state.order!!.actualDeliveryDate!!)
                                 Text(
-                                    "Дата выдачи авто: $dateStr",
+                                    "Дата выдачи авто: " +
+                                            ReportDateFormatter.format(state.order!!.actualDeliveryDate!!),
                                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -578,8 +531,7 @@ fun OrderDetailsScreen(
                                 )
                                 state.assignments.forEach { a ->
                                     val empName = state.employees
-                                        .find { it.id == a.employeeId }
-                                        ?.fullName ?: "—"
+                                        .find { it.id == a.employeeId }?.fullName ?: "—"
                                     Text(
                                         "• ${a.role.displayName()}: $empName",
                                         color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -597,8 +549,9 @@ fun OrderDetailsScreen(
                         "ACCEPTED", "WAITING" -> {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 PrimaryGlassButton(
-                                    text = "Назначить на пост",
+                                    text = "Поставить машину на пост",
                                     onClick = {
+                                        postPickEmployee = null
                                         bottomSheetMode = "POST"
                                         showBottomSheet = true
                                     },
@@ -632,40 +585,7 @@ fun OrderDetailsScreen(
         }
     }
 
-    // --- ДИАЛОГИ ---
-
-    if (postPendingPhase != null) {
-        val post = postPendingPhase!!
-        AlertDialog(
-            onDismissRequest = { postPendingPhase = null },
-            containerColor = MaterialTheme.colorScheme.surface,
-            titleContentColor = MaterialTheme.colorScheme.onSurface,
-            title = { Text("Вид работ на «${post.displayName.ifEmpty { post.name.name }}»") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = {
-                            viewModel.assignToPost(post, StagePhase.BODY)
-                            postPendingPhase = null
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("Кузовные работы (рихтовка)") }
-                    Button(
-                        onClick = {
-                            viewModel.assignToPost(post, StagePhase.PREP)
-                            postPendingPhase = null
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("Подготовка (шпаклёвка, шлифовка)") }
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { postPendingPhase = null }) { Text("Отмена") }
-            }
-        )
-    }
-
+    // --- ДИАЛОГ РЕШЕНИЯ ПРИ ЗАВЕРШЕНИИ ЭТАПА ---
     if (showStageDecisionDialog) {
         AlertDialog(
             onDismissRequest = {
@@ -834,9 +754,12 @@ fun OrderDetailsScreen(
         )
     }
 
-    // ===== НАЧИСЛЕНИЕ ЗП: ставка вводится вручную (BR-3) =====
+    // --- НАЧИСЛЕНИЕ ЗП: роль из профиля ---
     if (employeeToAccrue != null) {
         val emp = employeeToAccrue!!
+        val role = EmployeeSpecialty.roleOf(emp.position, emp.compensationType)
+        val isBody = role == WorkRole.BODY
+
         var panelsCount by remember(emp.id) { mutableStateOf("1") }
         var rateInput by remember(emp.id) {
             mutableStateOf(if (emp.rateValue > 0L) emp.rateValue.toString() else "")
@@ -845,16 +768,10 @@ fun OrderDetailsScreen(
         val rate = rateInput.toLongOrNull() ?: 0L
         val panels = panelsCount.toIntOrNull() ?: 1
         val bodyWorksCents = state.works
-            .filter { it.type == WorkType.BODY }
-            .sumOf { it.costCents }
-        val preview: Long = if (accrualRole == WorkRole.BODY) {
-            bodyWorksCents * rate / 100
-        } else {
-            rate * panels * 100
-        }
-        val canSubmit = rate > 0L &&
-                (accrualRole != WorkRole.BODY || bodyWorksCents > 0L) &&
-                (accrualRole == WorkRole.BODY || panels >= 1)
+            .filter { it.type == WorkType.BODY }.sumOf { it.costCents }
+        val preview: Long = if (isBody) bodyWorksCents * rate / 100 else rate * panels * 100
+        val canSubmit = role != WorkRole.GENERAL && rate > 0L &&
+                (!isBody || bodyWorksCents > 0L) && (isBody || panels >= 1)
 
         AlertDialog(
             onDismissRequest = { employeeToAccrue = null },
@@ -863,23 +780,25 @@ fun OrderDetailsScreen(
             title = { Text("Начислить ЗП: ${emp.fullName}") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Роль на заказе:", color = MaterialTheme.colorScheme.onSurface)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer
                     ) {
-                        listOf(WorkRole.BODY, WorkRole.PREP, WorkRole.PAINT).forEach { r ->
-                            FilterChip(
-                                selected = accrualRole == r,
-                                onClick = { accrualRole = r; rateInput = "" },
-                                label = { Text(r.displayName(), maxLines = 1, softWrap = false) }
-                            )
-                        }
+                        Text(
+                            role.displayName(),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
 
-                    if (accrualRole == WorkRole.BODY) {
+                    if (role == WorkRole.GENERAL) {
+                        Text(
+                            "Специализация не задана. Откройте Настройки → Сотрудники цеха.",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    } else if (isBody) {
                         Text(
                             "Сумма кузовных работ: ${MoneyFormatter.format(bodyWorksCents)}",
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -915,7 +834,6 @@ fun OrderDetailsScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         "К начислению: ${MoneyFormatter.format(preview)}",
                         fontWeight = FontWeight.Bold,
@@ -927,12 +845,7 @@ fun OrderDetailsScreen(
                 TextButton(
                     enabled = canSubmit,
                     onClick = {
-                        viewModel.addAccrual(
-                            employee = emp,
-                            role = accrualRole,
-                            rate = rate,
-                            panels = panels
-                        )
+                        viewModel.addAccrual(employee = emp, rate = rate, panels = panels)
                         employeeToAccrue = null
                     }
                 ) { Text("Начислить") }
@@ -943,122 +856,196 @@ fun OrderDetailsScreen(
         )
     }
 
-    if (showRoleDialog && employeeToAssign != null) {
-        val emp = employeeToAssign!!
-        AlertDialog(
-            onDismissRequest = {
-                showRoleDialog = false
-                employeeToAssign = null
-            },
-            containerColor = MaterialTheme.colorScheme.surface,
-            titleContentColor = MaterialTheme.colorScheme.onSurface,
-            title = { Text("Роль: ${emp.fullName}") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(WorkRole.BODY, WorkRole.PREP, WorkRole.PAINT).forEach { r ->
-                        Button(
-                            onClick = {
-                                viewModel.assignEmployee(emp, r)
-                                showRoleDialog = false
-                                employeeToAssign = null
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text(r.displayName()) }
-                    }
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = {
-                    showRoleDialog = false
-                    employeeToAssign = null
-                }) { Text("Отмена") }
-            }
-        )
-    }
-
+    // --- НИЖНИЙ ЛИСТ ---
     if (showBottomSheet) {
         ModalBottomSheet(
-            onDismissRequest = { showBottomSheet = false },
+            onDismissRequest = {
+                showBottomSheet = false
+                postPickEmployee = null
+            },
             containerColor = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 when (bottomSheetMode) {
+
                     "POST" -> {
+                        val picked = postPickEmployee
+                        if (picked == null) {
+                            Text(
+                                "Кто работает над машиной?",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                "Вид работ определится по специализации мастера.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+                            )
+                            if (state.employees.isEmpty()) {
+                                Text(
+                                    "Нет мастеров. Добавьте их в Настройках → Сотрудники цеха.",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            state.employees.forEach { emp ->
+                                val role = EmployeeSpecialty.roleOf(
+                                    emp.position, emp.compensationType
+                                )
+                                val known = role != WorkRole.GENERAL
+                                ListItem(
+                                    headlineContent = {
+                                        Text(
+                                            emp.fullName,
+                                            color = if (known) MaterialTheme.colorScheme.onSurface
+                                            else MaterialTheme.colorScheme.error
+                                        )
+                                    },
+                                    supportingContent = {
+                                        Text(
+                                            if (known) role.displayName()
+                                            else "Специализация не задана",
+                                            color = if (known) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.error,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    },
+                                    leadingContent = {
+                                        Icon(
+                                            Icons.Default.Person,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    },
+                                    modifier = Modifier.clickable(enabled = known) {
+                                        postPickEmployee = emp
+                                    }
+                                )
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                                )
+                            }
+                        } else {
+                            val role = EmployeeSpecialty.roleOf(
+                                picked.position, picked.compensationType
+                            )
+                            Text(
+                                "Куда ставим машину?",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                "${picked.fullName} · ${role.displayName()}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+                            )
+                            val compatible = state.posts.filter {
+                                it.isActive && EmployeeSpecialty.canWorkOn(role, it.type)
+                            }
+                            if (compatible.isEmpty()) {
+                                Text(
+                                    EmployeeSpecialty.incompatibilityReason(
+                                        role,
+                                        if (role == WorkRole.PAINT) PostType.PREP else PostType.PAINT
+                                    ),
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                            compatible.forEach { post ->
+                                ListItem(
+                                    headlineContent = {
+                                        Text(
+                                            post.displayName.ifEmpty {
+                                                post.name.name.replace("_", " ")
+                                            },
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    },
+                                    supportingContent = {
+                                        Text(
+                                            if (post.type == PostType.PAINT) "Покрасочная камера"
+                                            else "Универсальный пост",
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    },
+                                    leadingContent = {
+                                        Icon(
+                                            Icons.Default.Build,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    },
+                                    modifier = Modifier.clickable {
+                                        showBottomSheet = false
+                                        postPickEmployee = null
+                                        viewModel.assignMasterToPost(picked, post)
+                                    }
+                                )
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                                )
+                            }
+                            TextButton(onClick = { postPickEmployee = null }) {
+                                Text("← Выбрать другого мастера")
+                            }
+                        }
+                    }
+
+                    else -> {
                         Text(
-                            "Выберите пост",
+                            if (bottomSheetMode == "EMPLOYEE_ACCRUAL") "Начислить ЗП мастеру"
+                            else "Добавить мастера на заказ",
                             style = MaterialTheme.typography.titleLarge,
                             color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(bottom = 16.dp)
+                            modifier = Modifier.padding(bottom = 8.dp)
                         )
-                        val activePosts = state.posts.filter { it.isActive }
-                        if (activePosts.isEmpty()) {
+                        Text(
+                            "Специализация подставится из настроек.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        )
+                        if (state.employees.isEmpty()) {
                             Text(
-                                "Нет активных постов. Включите их в настройках.",
+                                "Нет мастеров. Добавьте их в Настройках → Сотрудники цеха.",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        activePosts.forEach { post ->
-                            ListItem(
-                                headlineContent = {
-                                    Text(
-                                        post.displayName.ifEmpty {
-                                            post.name.name.replace("_", " ")
-                                        },
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                },
-                                supportingContent = {
-                                    Text(
-                                        if (post.type == PostType.PAINT)
-                                            "Покрасочная камера"
-                                        else
-                                            "Универсальный (кузов/подготовка)",
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                },
-                                leadingContent = {
-                                    Icon(
-                                        Icons.Default.Build,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSurface
-                                    )
-                                },
-                                modifier = Modifier.clickable {
-                                    showBottomSheet = false
-                                    if (post.type == PostType.PAINT) {
-                                        viewModel.assignToPost(post, StagePhase.PAINT)
-                                    } else {
-                                        postPendingPhase = post
-                                    }
-                                }
-                            )
-                            HorizontalDivider(
-                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
-                            )
-                        }
-                    }
-                    "EMPLOYEE_ACCRUAL", "ASSIGN_EMPLOYEE" -> {
-                        Text(
-                            "Выберите сотрудника",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        )
-                        if (state.employees.isEmpty()) Text(
-                            "Нет сотрудников",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                         state.employees.forEach { emp ->
+                            val role = EmployeeSpecialty.roleOf(
+                                emp.position, emp.compensationType
+                            )
+                            val known = role != WorkRole.GENERAL
+                            val already = state.assignments.any { it.employeeId == emp.id }
+                            val blocked = !known ||
+                                    (bottomSheetMode == "ASSIGN_EMPLOYEE" && already)
                             ListItem(
                                 headlineContent = {
-                                    Text(emp.fullName, color = MaterialTheme.colorScheme.onSurface)
+                                    Text(
+                                        emp.fullName,
+                                        color = if (known) MaterialTheme.colorScheme.onSurface
+                                        else MaterialTheme.colorScheme.error
+                                    )
                                 },
                                 supportingContent = {
-                                    Text(
-                                        emp.position,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Column {
+                                        Text(
+                                            if (known) role.displayName()
+                                            else "Специализация не задана",
+                                            color = if (known) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.error,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        if (bottomSheetMode == "ASSIGN_EMPLOYEE" && already) {
+                                            Text(
+                                                "Уже назначен на этот заказ",
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    }
                                 },
                                 leadingContent = {
                                     Icon(
@@ -1067,14 +1054,12 @@ fun OrderDetailsScreen(
                                         tint = MaterialTheme.colorScheme.onSurface
                                     )
                                 },
-                                modifier = Modifier.clickable {
+                                modifier = Modifier.clickable(enabled = !blocked) {
                                     showBottomSheet = false
                                     if (bottomSheetMode == "EMPLOYEE_ACCRUAL") {
-                                        accrualRole = WorkRole.BODY
                                         employeeToAccrue = emp
                                     } else {
-                                        employeeToAssign = emp
-                                        showRoleDialog = true
+                                        viewModel.assignEmployee(emp)
                                     }
                                 }
                             )

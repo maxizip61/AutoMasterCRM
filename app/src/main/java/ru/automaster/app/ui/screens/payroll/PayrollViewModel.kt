@@ -3,8 +3,10 @@ package ru.automaster.app.ui.screens.payroll
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import ru.automaster.app.data.local.dao.EmployeeDao
 import ru.automaster.app.data.local.dao.OrderEmployeeAccrualDao
 import ru.automaster.app.data.local.entity.EmployeeEntity
@@ -15,36 +17,28 @@ data class EmployeePayroll(
     val totalAccruedCents: Long
 )
 
+/**
+ * Только начисления и суммы к выплате.
+ * Управление мастерами (добавить / изменить / в архив) переехало
+ * в Настройки → Сотрудники цеха.
+ */
 @HiltViewModel
 class PayrollViewModel @Inject constructor(
-    private val employeeDao: EmployeeDao,
-    private val accrualDao: OrderEmployeeAccrualDao
+    employeeDao: EmployeeDao,
+    accrualDao: OrderEmployeeAccrualDao
 ) : ViewModel() {
 
-    // Собираем список сотрудников и их начисления
     val payrollList: StateFlow<List<EmployeePayroll>> = employeeDao.getActive()
         .map { employees ->
             employees.map { emp ->
-                val accrued = accrualDao.getTotalAccruedForEmployee(emp.id) ?: 0L
-                EmployeePayroll(emp, accrued)
+                EmployeePayroll(
+                    employee = emp,
+                    totalAccruedCents = accrualDao.getTotalAccruedForEmployee(emp.id) ?: 0L
+                )
             }
         }.stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
-
-    fun addEmployee(name: String, position: String, type: String, rate: Long) {
-        viewModelScope.launch {
-            employeeDao.insert(
-                EmployeeEntity(
-                    fullName = name,
-                    position = position,
-                    archived = false,
-                    compensationType = type,
-                    rateValue = rate
-                )
-            )
-        }
-    }
 }
