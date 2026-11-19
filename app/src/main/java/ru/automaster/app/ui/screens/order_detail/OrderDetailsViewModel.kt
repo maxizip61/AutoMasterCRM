@@ -75,7 +75,20 @@ data class OrderDetailsUiState(
     val photos: List<PhotoEntity> = emptyList(),
     val works: List<OrderWorkEntity> = emptyList(),
     val isLoading: Boolean = true
-)
+) {
+    /** Итог по роли с учётом сторно. Именно так считает SQL в DAO. */
+    fun netByRole(role: WorkRole): Long =
+        accruals.filter { it.role == role }
+            .sumOf { if (it.reversalOfId == null) it.amountCents else -it.amountCents }
+
+    /** Начисления, которые ещё не отменены и не являются сторно. */
+    val activeAccruals: List<OrderEmployeeAccrualEntity>
+        get() = accruals.filter { it.reversalOfId == null }
+
+    /** id начислений, для которых уже оформлено сторно. */
+    val reversedIds: Set<Long>
+        get() = accruals.mapNotNull { it.reversalOfId }.toSet()
+}
 
 @HiltViewModel
 class OrderDetailsViewModel @Inject constructor(
@@ -144,11 +157,6 @@ class OrderDetailsViewModel @Inject constructor(
         initialValue = OrderDetailsUiState()
     )
 
-    /**
-     * Постановка машины на пост.
-     * Фаза работ выводится из специализации мастера — спрашивать не нужно.
-     * Одновременно создаёт назначение мастера на заказ, если его ещё нет.
-     */
     fun assignMasterToPost(employee: EmployeeEntity, post: PostEntity) {
         viewModelScope.launch {
             withContext(NonCancellable) {
@@ -364,7 +372,6 @@ class OrderDetailsViewModel @Inject constructor(
         }
     }
 
-    /** Добавляет мастера на заказ без смены поста (например, второй маляр). */
     fun assignEmployee(employee: EmployeeEntity) {
         viewModelScope.launch {
             runCatching {
@@ -404,10 +411,6 @@ class OrderDetailsViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Начисление ЗП. Роль из профиля мастера.
-     * BODY → процент от суммы кузовных работ. PREP/PAINT → фикс за деталь.
-     */
     fun addAccrual(employee: EmployeeEntity, rate: Long, panels: Int = 1) {
         viewModelScope.launch {
             val order = uiState.value.order ?: return@launch
@@ -467,11 +470,52 @@ class OrderDetailsViewModel @Inject constructor(
                     )
                     if (insertId == -1L) {
                         throw IllegalStateException(
-                            "По этому этапу уже начислено (${role.displayName()})"
+                            "По этому этапу уже начислено (${role.displayName()}). " +
+                                    "Если сумма неверна — сначала отмените начисление."
                         )
                     }
                 }
             }.onFailure { e -> _message.value = e.message ?: "Ошибка начисления" }
+        }
+    }
+
+    /**
+     * Сторно: отмена начисления без изменения исходной записи.
+     *
+     * ВАЖНО: amountCents остаётся ПОЛОЖИТЕЛЬНЫМ — SQL в DAO сам вычитает
+     * записи с reversalOfId != NULL через CASE WHEN. Отрицательная сумма
+     * дала бы двойной минус и удвоила бы начисление.
+     */
+    fun reverseAccrual(original: OrderEmployeeAccrualEntity) {
+        viewModelScope.launch {
+            withContext(NonCancellable) {
+                runCatching {
+                    if (original.reversalOfId != null) {
+                        throw IllegalStateException("Это уже запись отмены — её отменять нельзя")
+                    }
+                    db.withTransaction {
+                        if (accrualDao.countReversals(original.id) > 0) {
+                            throw IllegalStateException("Начисление уже отменено")
+                        }
+                        val insertId = accrualDao.insert(
+                            original.copy(
+                                id = 0,
+                                amountCents = original.amountCents,
+                                reversalOfId = original.id,
+                                closedAt = Instant.now(),
+                                idempotencyKey = "reversal:${original.id}",
+                                comment = "Отмена начисления #${original.id}"
+                            )
+                        )
+                        if (insertId == -1L) {
+                            throw IllegalStateException("Начисление уже отменено")
+                        }
+                    }
+                    _message.value = "Начисление отменено. Можно удалить работу или начислить заново."
+                }.onFailure { e ->
+                    _message.value = e.message ?: "Ошибка отмены"
+                }
+            }
         }
     }
 
@@ -496,6 +540,10 @@ class OrderDetailsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Удаление работы. Блокируется только если по релевантной роли
+     * осталась НЕотменённая сумма. После сторно удаление разрешено.
+     */
     fun deleteWork(work: OrderWorkEntity) {
         viewModelScope.launch {
             runCatching {
@@ -508,10 +556,14 @@ class OrderDetailsViewModel @Inject constructor(
                 }
                 if (relevantRole != null) {
                     val accruals = accrualDao.getByOrder(order.id).first()
-                    if (accruals.any { it.role == relevantRole }) {
+                    val net = accruals.filter { it.role == relevantRole }
+                        .sumOf {
+                            if (it.reversalOfId == null) it.amountCents else -it.amountCents
+                        }
+                    if (net > 0L) {
                         _message.value =
-                            "Нельзя удалить работу: по роли ${relevantRole.displayName()} " +
-                                    "уже есть начисления."
+                            "По роли ${relevantRole.displayName()} есть действующее начисление. " +
+                                    "Отмените его кнопкой ↩ в блоке «Начисления зарплаты»."
                         return@runCatching
                     }
                 }

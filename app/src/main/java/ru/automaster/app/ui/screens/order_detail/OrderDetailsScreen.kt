@@ -28,9 +28,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import ru.automaster.app.data.local.entity.EmployeeEntity
+import ru.automaster.app.data.local.entity.OrderEmployeeAccrualEntity
 import ru.automaster.app.domain.model.EmployeeSpecialty
 import ru.automaster.app.domain.model.PostType
 import ru.automaster.app.domain.model.StageDecision
@@ -59,7 +61,6 @@ fun OrderDetailsScreen(
     var showBottomSheet by remember { mutableStateOf(false) }
     var bottomSheetMode by remember { mutableStateOf("POST") }
 
-    // Шаг 1 выбора поста: сначала мастер, потом пост
     var postPickEmployee by remember { mutableStateOf<EmployeeEntity?>(null) }
 
     var showPaymentDialog by remember { mutableStateOf(false) }
@@ -67,6 +68,9 @@ fun OrderDetailsScreen(
     var showAddWorkDialog by remember { mutableStateOf(false) }
     var showStageDecisionDialog by remember { mutableStateOf(false) }
     var employeeToAccrue by remember { mutableStateOf<EmployeeEntity?>(null) }
+
+    // Начисление, которое владелец собирается отменить
+    var accrualToReverse by remember { mutableStateOf<OrderEmployeeAccrualEntity?>(null) }
 
     LaunchedEffect(message) {
         message?.let {
@@ -288,7 +292,10 @@ fun OrderDetailsScreen(
                                 if (it.type.name == "REFUND") -it.amountCents else it.amountCents
                             }
                             val totalSpent = state.expenses.sumOf { it.amountCents }
-                            val totalSalary = state.accruals.sumOf { it.amountCents }
+                            // Итог ЗП с учётом сторно: так же, как считает SQL в DAO
+                            val totalSalary = state.accruals.sumOf {
+                                if (it.reversalOfId == null) it.amountCents else -it.amountCents
+                            }
 
                             RowLabelValue(
                                 "Смета:",
@@ -458,9 +465,79 @@ fun OrderDetailsScreen(
                                     val empName = state.employees
                                         .find { it.id == accrual.employeeId }
                                         ?.fullName ?: "Мастер"
-                                    RowLabelValue(
-                                        "$empName (${accrual.role.displayName()})",
-                                        MoneyFormatter.format(accrual.amountCents)
+                                    val isReversalRow = accrual.reversalOfId != null
+                                    val wasReversed = accrual.id in state.reversedIds
+                                    val dimmed = isReversalRow || wasReversed
+
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                if (isReversalRow) "Отмена начисления"
+                                                else "$empName (${accrual.role.displayName()})",
+                                                color = if (dimmed)
+                                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                                else MaterialTheme.colorScheme.onSurface,
+                                                fontWeight = if (dimmed)
+                                                    FontWeight.Normal else FontWeight.Bold,
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                            if (wasReversed && !isReversalRow) {
+                                                Text(
+                                                    "отменено",
+                                                    color = MaterialTheme.colorScheme.outline,
+                                                    style = MaterialTheme.typography.bodySmall
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            (if (isReversalRow) "−" else "") +
+                                                    MoneyFormatter.format(accrual.amountCents),
+                                            color = if (isReversalRow)
+                                                MaterialTheme.colorScheme.error
+                                            else if (wasReversed)
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            else MaterialTheme.colorScheme.onSurface,
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            textDecoration = if (wasReversed && !isReversalRow)
+                                                TextDecoration.LineThrough else null
+                                        )
+                                        if (!dimmed) {
+                                            TextButton(
+                                                onClick = { accrualToReverse = accrual },
+                                                contentPadding = PaddingValues(
+                                                    horizontal = 8.dp, vertical = 0.dp
+                                                )
+                                            ) { Text("Отменить") }
+                                        } else {
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                        }
+                                    }
+                                    HorizontalDivider(
+                                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+                                    )
+                                }
+
+                                val net = state.accruals.sumOf {
+                                    if (it.reversalOfId == null) it.amountCents
+                                    else -it.amountCents
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                RowLabelValue(
+                                    "Итого к выплате:",
+                                    MoneyFormatter.format(net),
+                                    MaterialTheme.colorScheme.tertiary
+                                )
+                                if (state.reversedIds.isNotEmpty()) {
+                                    Text(
+                                        "Отменённые начисления сохранены в истории и не учитываются в итоге.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
@@ -583,6 +660,48 @@ fun OrderDetailsScreen(
                 }
             }
         }
+    }
+
+    // --- ПОДТВЕРЖДЕНИЕ ОТМЕНЫ НАЧИСЛЕНИЯ ---
+    if (accrualToReverse != null) {
+        val a = accrualToReverse!!
+        val empName = state.employees.find { it.id == a.employeeId }?.fullName ?: "мастеру"
+        AlertDialog(
+            onDismissRequest = { accrualToReverse = null },
+            containerColor = MaterialTheme.colorScheme.surface,
+            titleContentColor = MaterialTheme.colorScheme.onSurface,
+            title = { Text("Отменить начисление?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "$empName · ${a.role.displayName()} · " +
+                                MoneyFormatter.format(a.amountCents),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "Исходная запись останется в истории, рядом появится запись отмены. " +
+                                "Итог к выплате уменьшится на эту сумму.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        "После отмены можно удалить работу или начислить заново.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.reverseAccrual(a)
+                    accrualToReverse = null
+                }) { Text("Отменить начисление", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { accrualToReverse = null }) { Text("Назад") }
+            }
+        )
     }
 
     // --- ДИАЛОГ РЕШЕНИЯ ПРИ ЗАВЕРШЕНИИ ЭТАПА ---

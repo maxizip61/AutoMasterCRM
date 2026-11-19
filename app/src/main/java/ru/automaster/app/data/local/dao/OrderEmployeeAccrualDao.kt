@@ -10,14 +10,22 @@ interface OrderEmployeeAccrualDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(accrual: OrderEmployeeAccrualEntity): Long
 
+    /** Оригинал для сторно. */
+    @Query("SELECT * FROM order_employee_accruals WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Long): OrderEmployeeAccrualEntity?
+
+    /** Есть ли уже сторно для этого начисления. */
+    @Query("SELECT COUNT(*) FROM order_employee_accruals WHERE reversalOfId = :accrualId")
+    suspend fun countReversals(accrualId: Long): Int
+
     @Query("SELECT * FROM order_employee_accruals WHERE orderId = :orderId")
     fun getByOrder(orderId: Long): Flow<List<OrderEmployeeAccrualEntity>>
 
     @Query("SELECT SUM(CASE WHEN reversalOfId IS NULL THEN amountCents ELSE -amountCents END) FROM order_employee_accruals WHERE closedAt >= :from AND closedAt <= :to")
-    suspend fun getAccruedInRange(from: java.time.Instant, to: java.time.Instant): Long?
+    suspend fun getAccruedInRange(from: Instant, to: Instant): Long?
 
     @Query("SELECT SUM(CASE WHEN reversalOfId IS NULL THEN amountCents ELSE -amountCents END) FROM order_employee_accruals WHERE employeeId = :employeeId AND closedAt >= :from AND closedAt <= :to")
-    suspend fun getAccruedForEmployee(employeeId: Long, from: java.time.Instant, to: java.time.Instant): Long?
+    suspend fun getAccruedForEmployee(employeeId: Long, from: Instant, to: Instant): Long?
 
     @Query("SELECT SUM(CASE WHEN reversalOfId IS NULL THEN amountCents ELSE -amountCents END) FROM order_employee_accruals WHERE employeeId = :employeeId")
     suspend fun getTotalAccruedForEmployee(employeeId: Long): Long?

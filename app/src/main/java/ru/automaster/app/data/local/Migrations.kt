@@ -1,43 +1,63 @@
 package ru.automaster.app.data.local
 
+import android.util.Log
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
+private const val TAG = "Migrations"
+
+/** Есть ли колонка в таблице. */
+private fun SupportSQLiteDatabase.hasColumn(table: String, column: String): Boolean {
+    query("PRAGMA table_info($table)").use { cursor ->
+        val nameIdx = cursor.getColumnIndex("name")
+        if (nameIdx < 0) return false
+        while (cursor.moveToNext()) {
+            if (cursor.getString(nameIdx) == column) return true
+        }
+    }
+    return false
+}
+
+/** Есть ли таблица. */
+private fun SupportSQLiteDatabase.hasTable(table: String): Boolean {
+    query(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        arrayOf(table)
+    ).use { cursor -> return cursor.moveToFirst() }
+}
+
 /**
- * Добавляет колонку только если её ещё нет.
- * Room в некоторых сценариях (откат APK, повторная установка поверх
- * уже мигрированной БД) вызывает миграцию заново, что даёт
- * SQLiteException "duplicate column name". Хелпер предотвращает ошибку.
+ * Добавляет колонку ТОЛЬКО если её ещё нет.
+ * Защита от "duplicate column name" при обновлении поверх
+ * частично мигрированной базы.
  */
-private fun SupportSQLiteDatabase.addColumnIfMissing(
+fun SupportSQLiteDatabase.addColumnIfMissing(
     table: String,
     column: String,
     definition: String
 ) {
-    val cursor = query("PRAGMA table_info(`$table`)")
-    var exists = false
-    try {
-        val nameIndex = cursor.getColumnIndex("name")
-        while (cursor.moveToNext()) {
-            if (cursor.getString(nameIndex) == column) {
-                exists = true
-                break
-            }
-        }
-    } finally {
-        cursor.close()
+    if (!hasTable(table)) {
+        Log.w(TAG, "Таблицы $table нет — пропуск $column")
+        return
     }
-    if (!exists) {
-        execSQL("ALTER TABLE `$table` ADD COLUMN `$column` $definition")
+    if (hasColumn(table, column)) {
+        Log.i(TAG, "$table.$column уже существует — пропуск")
+        return
     }
+    execSQL("ALTER TABLE $table ADD COLUMN $column $definition")
+    Log.i(TAG, "Добавлена колонка $table.$column")
 }
 
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(db: SupportSQLiteDatabase) {
+        Log.i(TAG, "Миграция 1 → 2")
         db.addColumnIfMissing("posts", "displayName", "TEXT NOT NULL DEFAULT ''")
         db.addColumnIfMissing("posts", "isActive", "INTEGER NOT NULL DEFAULT 1")
         db.addColumnIfMissing("posts", "sortOrder", "INTEGER NOT NULL DEFAULT 0")
-        db.execSQL("UPDATE posts SET displayName = name WHERE displayName = ''")
+
+        if (db.hasTable("posts") && db.hasColumn("posts", "displayName")) {
+            db.execSQL("UPDATE posts SET displayName = name WHERE displayName = ''")
+        }
 
         db.addColumnIfMissing("file_deletion_tasks", "attempts", "INTEGER NOT NULL DEFAULT 0")
         db.addColumnIfMissing("file_deletion_tasks", "lastError", "TEXT")
@@ -46,55 +66,50 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
 
 val MIGRATION_2_3 = object : Migration(2, 3) {
     override fun migrate(db: SupportSQLiteDatabase) {
+        Log.i(TAG, "Миграция 2 → 3")
         db.addColumnIfMissing(
-            "order_employee_assignments",
-            "role",
-            "TEXT NOT NULL DEFAULT 'GENERAL'"
+            "order_employee_assignments", "role", "TEXT NOT NULL DEFAULT 'GENERAL'"
         )
         db.addColumnIfMissing(
-            "order_employee_accruals",
-            "role",
-            "TEXT NOT NULL DEFAULT 'GENERAL'"
+            "order_employee_accruals", "role", "TEXT NOT NULL DEFAULT 'GENERAL'"
         )
     }
 }
 
 val MIGRATION_3_4 = object : Migration(3, 4) {
     override fun migrate(db: SupportSQLiteDatabase) {
-        // 1. Удаляем дубли по (orderId, employeeId, role), оставляя MIN(id).
-        //    Без этого CREATE UNIQUE INDEX упадёт на старых данных.
-        db.execSQL(
-            """
-            DELETE FROM order_employee_assignments
-            WHERE id NOT IN (
-                SELECT MIN(id) FROM order_employee_assignments
-                GROUP BY orderId, employeeId, role
-            )
-            """.trimIndent()
-        )
-
-        // 2. Безопасно дропаем старые индексы (могли быть в разных версиях схемы).
+        Log.i(TAG, "Миграция 3 → 4")
         db.execSQL("DROP INDEX IF EXISTS index_order_employee_assignments_orderId")
         db.execSQL("DROP INDEX IF EXISTS index_order_employee_assignments_employeeId")
-        db.execSQL("DROP INDEX IF EXISTS index_order_employee_assignments_orderId_employeeId")
 
-        // 3. Создаём новый уникальный индекс и восстанавливаем одиночный по employeeId
-        //    (предыдущая версия миграции его удаляла, но не пересоздавала — Room падал
-        //    на проверке схемы «expected index employeeId, found none»).
+        // Убираем дубли ДО создания уникального индекса,
+        // иначе CREATE UNIQUE INDEX упадёт на старых данных.
+        if (db.hasTable("order_employee_assignments")) {
+            db.execSQL(
+                """
+                DELETE FROM order_employee_assignments
+                WHERE id NOT IN (
+                    SELECT MIN(id) FROM order_employee_assignments
+                    GROUP BY orderId, employeeId, role
+                )
+                """.trimIndent()
+            )
+            Log.i(TAG, "Дубли назначений удалены")
+        }
+
         db.execSQL(
-            "CREATE UNIQUE INDEX IF NOT EXISTS " +
-                    "index_order_employee_assignments_orderId_employeeId_role " +
-                    "ON order_employee_assignments(orderId, employeeId, role)"
-        )
-        db.execSQL(
-            "CREATE INDEX IF NOT EXISTS index_order_employee_assignments_employeeId " +
-                    "ON order_employee_assignments(employeeId)"
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS
+            index_order_employee_assignments_orderId_employeeId_role
+            ON order_employee_assignments(orderId, employeeId, role)
+            """.trimIndent()
         )
     }
 }
 
 val MIGRATION_4_5 = object : Migration(4, 5) {
     override fun migrate(db: SupportSQLiteDatabase) {
+        Log.i(TAG, "Миграция 4 → 5")
         db.execSQL(
             """
             CREATE TABLE IF NOT EXISTS `order_works` (
@@ -105,16 +120,15 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
                 `costCents` INTEGER NOT NULL,
                 `assignedEmployeeId` INTEGER,
                 `createdAt` INTEGER NOT NULL,
-                FOREIGN KEY(`orderId`) REFERENCES `orders`(`id`) 
+                FOREIGN KEY(`orderId`) REFERENCES `orders`(`id`)
                     ON UPDATE NO ACTION ON DELETE CASCADE,
-                FOREIGN KEY(`assignedEmployeeId`) REFERENCES `employees`(`id`) 
+                FOREIGN KEY(`assignedEmployeeId`) REFERENCES `employees`(`id`)
                     ON UPDATE NO ACTION ON DELETE SET NULL
             )
             """.trimIndent()
         )
         db.execSQL(
-            "CREATE INDEX IF NOT EXISTS `index_order_works_orderId` " +
-                    "ON `order_works` (`orderId`)"
+            "CREATE INDEX IF NOT EXISTS `index_order_works_orderId` ON `order_works` (`orderId`)"
         )
         db.execSQL(
             "CREATE INDEX IF NOT EXISTS `index_order_works_assignedEmployeeId` " +
