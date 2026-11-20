@@ -1,15 +1,27 @@
 package ru.automaster.app.ui.screens.orders
 
+import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.room.withTransaction
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import ru.automaster.app.data.local.AppDatabase
 import ru.automaster.app.data.local.dao.CarDao
 import ru.automaster.app.data.local.dao.ClientDao
 import ru.automaster.app.data.local.dao.OrderDao
 import ru.automaster.app.data.local.entity.CarEntity
 import ru.automaster.app.data.local.entity.ClientEntity
 import ru.automaster.app.data.local.entity.OrderEntity
+import ru.automaster.app.domain.document.CarDraft
+import ru.automaster.app.domain.document.DocumentScanner
 import ru.automaster.app.domain.model.OrderStatus
 import java.time.Instant
 import javax.inject.Inject
@@ -18,8 +30,70 @@ import javax.inject.Inject
 class AddOrderViewModel @Inject constructor(
     private val clientDao: ClientDao,
     private val carDao: CarDao,
-    private val orderDao: OrderDao
+    private val orderDao: OrderDao,
+    private val db: AppDatabase,
+    private val documentScanner: DocumentScanner
 ) : ViewModel() {
+
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message.asStateFlow()
+
+    fun clearMessage() { _message.value = null }
+
+    private val _draft = MutableStateFlow<CarDraft?>(null)
+    val draft: StateFlow<CarDraft?> = _draft.asStateFlow()
+
+    private val _isScanning = MutableStateFlow(false)
+    val isScanning: StateFlow<Boolean> = _isScanning.asStateFlow()
+
+    fun clearDraft() { _draft.value = null }
+
+    fun scanDocument(uri: Uri) {
+        viewModelScope.launch {
+            _isScanning.value = true
+            try {
+                documentScanner.scan(uri)
+                    .onSuccess { d ->
+                        _draft.value = d
+                        _message.value = if (d.filledCount > 0)
+                            "Распознано полей: ${d.filledCount}. Проверьте и подтвердите."
+                        else "Текст не распознан. Заполните поля вручную."
+                    }
+                    .onFailure { _message.value = it.message ?: "Ошибка распознавания" }
+            } finally {
+                _isScanning.value = false
+            }
+        }
+    }
+
+    private fun normalizePhone(phone: String): String {
+        val d = phone.filter { it.isDigit() }
+        return when {
+            d.length == 11 && d.startsWith("8") -> "7" + d.drop(1)
+            d.length == 11 && d.startsWith("7") -> d
+            d.length == 10 -> "7$d"
+            else -> d
+        }
+    }
+
+    private val latToCyr = mapOf(
+        'A' to 'А', 'B' to 'В', 'E' to 'Е', 'K' to 'К', 'M' to 'М',
+        'H' to 'Н', 'O' to 'О', 'P' to 'Р', 'C' to 'С', 'T' to 'Т',
+        'Y' to 'У', 'X' to 'Х'
+    )
+
+    private fun normalizePlate(plate: String): String =
+        plate.uppercase()
+            .filter { it.isLetterOrDigit() }
+            .map { latToCyr[it] ?: it }
+            .joinToString("")
+
+    /**
+     * Сигнал UI: форма должна очиститься после успешного сохранения.
+     * ViewModel не знает о навигации — решение об уходе с экрана принимает экран.
+     */
+    private val _resetForm = MutableStateFlow(0)
+    val resetForm: StateFlow<Int> = _resetForm.asStateFlow()
 
     fun createOrder(
         clientName: String,
@@ -29,37 +103,116 @@ class AddOrderViewModel @Inject constructor(
         licensePlate: String,
         vin: String,
         estimateCents: Long,
-        onSuccess: () -> Unit
+        year: Int? = null
     ) {
         viewModelScope.launch {
-            // 1. Создаем клиента
-            val clientId = clientDao.insert(ClientEntity(name = clientName, phone = clientPhone))
+            withContext(NonCancellable) {
+                runCatching {
+                    require(clientName.isNotBlank()) { "Введите ФИО клиента" }
+                    require(licensePlate.isNotBlank()) { "Введите госномер" }
+                    require(estimateCents >= 0L) { "Смета не может быть отрицательной" }
 
-            // 2. Создаем машину
-            val searchIndex = licensePlate.replace(" ", "").uppercase()
-            val carId = carDao.insert(
-                CarEntity(
-                    clientId = clientId,
-                    licensePlate = licensePlate,
-                    licensePlateSearchIndex = searchIndex,
-                    vin = vin.uppercase(),
-                    make = carMake,
-                    model = carModel
-                )
-            )
+                    val phoneKey = normalizePhone(clientPhone)
+                    val plateKey = normalizePlate(licensePlate)
+                    val vinKey = vin.trim().uppercase()
+                    val now = Instant.now()
 
-            // 3. Создаем заказ
-            orderDao.insert(
-                OrderEntity(
-                    clientId = clientId,
-                    carId = carId,
-                    createdAt = Instant.now(),
-                    plannedDeliveryDate = Instant.now().plusSeconds(86400 * 3), // +3 дня по умолчанию
-                    agreedEstimateCents = estimateCents,
-                    status = OrderStatus.ACCEPTED
-                )
-            )
-            onSuccess()
+                    Log.i(TAG, "Поиск: phone=$phoneKey plate=$plateKey vin=$vinKey")
+
+                    val allClients = clientDao.getAll().first()
+                    val existingClient = if (phoneKey.length >= 10) {
+                        allClients.firstOrNull { normalizePhone(it.phone) == phoneKey }
+                    } else null
+                    Log.i(TAG, "Клиент: ${existingClient?.id ?: "не найден"}")
+
+                    val byVin = if (vinKey.isNotBlank()) carDao.getByVin(vinKey) else null
+                    val existingCar = byVin ?: run {
+                        carDao.search("").first().firstOrNull {
+                            normalizePlate(it.licensePlateSearchIndex) == plateKey ||
+                                    normalizePlate(it.licensePlate) == plateKey
+                        }
+                    }
+                    Log.i(TAG, "Машина: ${existingCar?.id ?: "не найдена"}")
+
+                    var clientId = 0L
+                    var carId = 0L
+
+                    db.withTransaction {
+                        clientId = if (existingClient != null) {
+                            existingClient.id
+                        } else {
+                            clientDao.insert(
+                                ClientEntity(
+                                    name = clientName.trim(),
+                                    phone = clientPhone.trim()
+                                )
+                            )
+                        }
+
+                        carId = if (existingCar != null) {
+                            if (existingCar.clientId != clientId ||
+                                (year != null && existingCar.year == null) ||
+                                existingCar.vin.isBlank()
+                            ) {
+                                carDao.update(
+                                    existingCar.copy(
+                                        clientId = clientId,
+                                        year = existingCar.year ?: year,
+                                        vin = existingCar.vin.ifBlank { vinKey }
+                                    )
+                                )
+                            }
+                            existingCar.id
+                        } else {
+                            carDao.insert(
+                                CarEntity(
+                                    clientId = clientId,
+                                    licensePlate = licensePlate.trim().uppercase(),
+                                    licensePlateSearchIndex = plateKey,
+                                    vin = vinKey,
+                                    make = carMake.trim(),
+                                    model = carModel.trim(),
+                                    year = year
+                                )
+                            )
+                        }
+
+                        orderDao.insert(
+                            OrderEntity(
+                                clientId = clientId,
+                                carId = carId,
+                                createdAt = now,
+                                plannedDeliveryDate = now.plusSeconds(86400L * 3),
+                                agreedEstimateCents = estimateCents,
+                                status = OrderStatus.ACCEPTED
+                            )
+                        )
+                    }
+
+                    Log.i(TAG, "Записано: clientId=$clientId carId=$carId")
+
+                    // Сообщение остаётся на ТЕКУЩЕМ экране
+                    _message.value = when {
+                        existingClient != null && existingCar != null ->
+                            "✓ Клиент и машина найдены в базе — заказ добавлен"
+                        existingClient != null ->
+                            "✓ Клиент найден, создана новая машина"
+                        existingCar != null ->
+                            "✓ Машина найдена, создан новый клиент"
+                        else -> "✓ Заказ создан: новый клиент и машина"
+                    }
+
+                    // Сигнал экрану: очистить форму
+                    _resetForm.value = _resetForm.value + 1
+                }.onFailure { e ->
+                    Log.e(TAG, "Создание заказа провалено", e)
+                    _message.value = "✗ ${e.message ?: "Не удалось создать заказ"}"
+                }
+            }
         }
+    }
+
+    private companion object {
+        const val TAG = "AddOrder"
     }
 }

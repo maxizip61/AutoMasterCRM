@@ -32,7 +32,33 @@ fun AddOrderScreen(
     var vin by remember { mutableStateOf("") }
     var estimate by remember { mutableStateOf("") }
 
+    val message by viewModel.message.collectAsState()
+    val resetSignal by viewModel.resetForm.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Очищаем форму после успешного создания заказа
+    LaunchedEffect(resetSignal) {
+        if (resetSignal > 0) {
+            clientName = ""
+            clientPhone = ""
+            carMake = ""
+            carModel = ""
+            licensePlate = ""
+            vin = ""
+            estimate = ""
+        }
+    }
+
+    // Показываем сообщение
+    LaunchedEffect(message) {
+        message?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearMessage()
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Новый заказ", fontWeight = FontWeight.Bold) },
@@ -41,7 +67,9 @@ fun AddOrderScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
             )
         }
     ) { padding ->
@@ -53,7 +81,11 @@ fun AddOrderScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Данные клиента", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                "Данные клиента",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
             CustomTextField(
                 value = clientName,
                 onValueChange = { clientName = it },
@@ -68,7 +100,11 @@ fun AddOrderScreen(
             )
 
             Spacer(modifier = Modifier.height(8.dp))
-            Text("Данные автомобиля", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                "Данные автомобиля",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
             CustomTextField(
                 value = carMake,
                 onValueChange = { carMake = it },
@@ -95,7 +131,11 @@ fun AddOrderScreen(
             )
 
             Spacer(modifier = Modifier.height(8.dp))
-            Text("Смета", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                "Смета",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
             CustomTextField(
                 value = estimate,
                 onValueChange = { estimate = it.filter { char -> char.isDigit() } },
@@ -109,10 +149,11 @@ fun AddOrderScreen(
                 onClick = {
                     val estimateCents = (estimate.toLongOrNull() ?: 0L) * 100
                     viewModel.createOrder(
-                        clientName, clientPhone, carMake, carModel, licensePlate, vin, estimateCents
-                    ) {
-                        onNavigateBack()
-                    }
+                        clientName, clientPhone, carMake, carModel,
+                        licensePlate, vin, estimateCents
+                    )
+                    // НЕ закрываем экран — форма очистится автоматически,
+                    // а пользователь увидит сообщение о результате
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -121,7 +162,11 @@ fun AddOrderScreen(
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = IndigoPrimary)
             ) {
-                Text("Создать заказ", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "Создать заказ",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
