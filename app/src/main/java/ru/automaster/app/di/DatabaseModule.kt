@@ -42,4 +42,7 @@ object DatabaseModule {
     @Provides fun provideWorkScheduleDao(db: AppDatabase): WorkScheduleDao = db.workScheduleDao()
     @Provides fun provideFileDeletionTaskDao(db: AppDatabase): FileDeletionTaskDao = db.fileDeletionTaskDao()
     @Provides fun provideOrderWorkDao(db: AppDatabase): OrderWorkDao = db.orderWorkDao()
+
+    // ---------- НОВЫЙ: провайдер для обучающего слоя OCR ----------
+    @Provides fun provideOcrCorrectionDao(db: AppDatabase): OcrCorrectionDao = db.ocrCorrectionDao()
 }

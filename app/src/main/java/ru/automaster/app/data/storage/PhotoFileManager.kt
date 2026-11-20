@@ -21,7 +21,16 @@ class PhotoFileManager @Inject constructor(
         if (!storageDir.exists()) storageDir.mkdirs()
         return File.createTempFile("JPEG_${timeStamp}_", ".jpg", storageDir)
     }
-
+    /**
+     * Файл для снимка СТС (без привязки к заказу — заказ ещё не создан).
+     * Хранится в подпапке sts/, автоматически чистится после сохранения заказа.
+     */
+    fun createStsImageFile(): File {
+        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val storageDir = File(context.filesDir, "sts")
+        if (!storageDir.exists()) storageDir.mkdirs()
+        return File.createTempFile("STS_${timeStamp}_", ".jpg", storageDir)
+    }
     fun getUriForFile(file: File): Uri {
         return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     }

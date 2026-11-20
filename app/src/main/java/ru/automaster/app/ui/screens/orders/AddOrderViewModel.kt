@@ -20,9 +20,12 @@ import ru.automaster.app.data.local.dao.OrderDao
 import ru.automaster.app.data.local.entity.CarEntity
 import ru.automaster.app.data.local.entity.ClientEntity
 import ru.automaster.app.data.local.entity.OrderEntity
+import ru.automaster.app.data.storage.PhotoFileManager
 import ru.automaster.app.domain.document.CarDraft
 import ru.automaster.app.domain.document.DocumentScanner
+import ru.automaster.app.domain.document.OcrLearningEngine
 import ru.automaster.app.domain.model.OrderStatus
+import java.io.File
 import java.time.Instant
 import javax.inject.Inject
 
@@ -32,7 +35,9 @@ class AddOrderViewModel @Inject constructor(
     private val carDao: CarDao,
     private val orderDao: OrderDao,
     private val db: AppDatabase,
-    private val documentScanner: DocumentScanner
+    private val documentScanner: DocumentScanner,
+    private val learningEngine: OcrLearningEngine,
+    private val photoFileManager: PhotoFileManager
 ) : ViewModel() {
 
     private val _message = MutableStateFlow<String?>(null)
@@ -46,22 +51,44 @@ class AddOrderViewModel @Inject constructor(
     private val _isScanning = MutableStateFlow(false)
     val isScanning: StateFlow<Boolean> = _isScanning.asStateFlow()
 
+    /** Сигнал экрану: очистить форму после успешного создания заказа. */
+    private val _resetForm = MutableStateFlow(0)
+    val resetForm: StateFlow<Int> = _resetForm.asStateFlow()
+
     fun clearDraft() { _draft.value = null }
+
+    private var stsPhotoFile: File? = null
+
+    fun prepareStsCameraUri(): Uri {
+        val file = photoFileManager.createStsImageFile()
+        stsPhotoFile = file
+        return photoFileManager.getUriForFile(file)
+    }
+
+    fun onStsPhotoTaken() {
+        val file = stsPhotoFile ?: return
+        val uri = photoFileManager.getUriForFile(file)
+        scanDocument(uri)
+    }
 
     fun scanDocument(uri: Uri) {
         viewModelScope.launch {
             _isScanning.value = true
             try {
                 documentScanner.scan(uri)
-                    .onSuccess { d ->
-                        _draft.value = d
-                        _message.value = if (d.filledCount > 0)
-                            "Распознано полей: ${d.filledCount}. Проверьте и подтвердите."
+                    .onSuccess { rawDraft ->
+                        val learned = learningEngine
+                            .applyCorrections(rawDraft)
+                            .let { learningEngine.linkToKnownCars(it) }
+                        _draft.value = learned
+                        _message.value = if (learned.filledCount > 0)
+                            "Распознано полей: ${learned.filledCount}. Проверьте и подтвердите."
                         else "Текст не распознан. Заполните поля вручную."
                     }
                     .onFailure { _message.value = it.message ?: "Ошибка распознавания" }
             } finally {
                 _isScanning.value = false
+                stsPhotoFile = null
             }
         }
     }
@@ -88,13 +115,6 @@ class AddOrderViewModel @Inject constructor(
             .map { latToCyr[it] ?: it }
             .joinToString("")
 
-    /**
-     * Сигнал UI: форма должна очиститься после успешного сохранения.
-     * ViewModel не знает о навигации — решение об уходе с экрана принимает экран.
-     */
-    private val _resetForm = MutableStateFlow(0)
-    val resetForm: StateFlow<Int> = _resetForm.asStateFlow()
-
     fun createOrder(
         clientName: String,
         clientPhone: String,
@@ -103,7 +123,8 @@ class AddOrderViewModel @Inject constructor(
         licensePlate: String,
         vin: String,
         estimateCents: Long,
-        year: Int? = null
+        year: Int? = null,
+        ocrDraft: CarDraft? = null
     ) {
         viewModelScope.launch {
             withContext(NonCancellable) {
@@ -191,7 +212,14 @@ class AddOrderViewModel @Inject constructor(
 
                     Log.i(TAG, "Записано: clientId=$clientId carId=$carId")
 
-                    // Сообщение остаётся на ТЕКУЩЕМ экране
+                    if (ocrDraft != null) {
+                        learningEngine.recordLesson("PLATE", ocrDraft.licensePlate, licensePlate)
+                        learningEngine.recordLesson("VIN", ocrDraft.vin, vin)
+                        learningEngine.recordLesson("MAKE", ocrDraft.make, carMake)
+                        learningEngine.recordLesson("MODEL", ocrDraft.model, carModel)
+                        Log.i(TAG, "Уроки записаны: ${ocrDraft.filledCount} полей")
+                    }
+
                     _message.value = when {
                         existingClient != null && existingCar != null ->
                             "✓ Клиент и машина найдены в базе — заказ добавлен"
@@ -202,7 +230,7 @@ class AddOrderViewModel @Inject constructor(
                         else -> "✓ Заказ создан: новый клиент и машина"
                     }
 
-                    // Сигнал экрану: очистить форму
+                    // Сигнал экрану: очистить форму после успеха
                     _resetForm.value = _resetForm.value + 1
                 }.onFailure { e ->
                     Log.e(TAG, "Создание заказа провалено", e)
