@@ -71,6 +71,14 @@ class AddOrderViewModel @Inject constructor(
         scanDocument(uri)
     }
 
+    /** Создаёт файл для снимка СТС (использует встроенная камера). */
+    fun newStsFile(): File = photoFileManager.createStsImageFile()
+
+    /** Распознаёт уже снятый файл (без FileProvider, без падений). */
+    fun scanStsFile(file: File) {
+        scanDocument(android.net.Uri.fromFile(file))
+    }
+
     fun scanDocument(uri: Uri) {
         viewModelScope.launch {
             _isScanning.value = true

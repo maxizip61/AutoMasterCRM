@@ -65,6 +65,12 @@ dependencies {
         implementation(libs.androidx.material.icons.extended)
         implementation(libs.androidx.navigation.compose)
 
+        val cameraxVersion = "1.3.4"
+        implementation("androidx.camera:camera-core:$cameraxVersion")
+        implementation("androidx.camera:camera-camera2:$cameraxVersion")
+        implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
+        implementation("androidx.camera:camera-view:$cameraxVersion")
+
         // Room
         implementation(libs.androidx.room.runtime)
         implementation(libs.androidx.room.ktx)

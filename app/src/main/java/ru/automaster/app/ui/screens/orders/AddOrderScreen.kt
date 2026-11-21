@@ -10,7 +10,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -19,7 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import ru.automaster.app.domain.document.CarDraft
+import ru.automaster.app.ui.components.StsCameraScreen
 import ru.automaster.app.ui.theme.IndigoPrimary
 import ru.automaster.app.ui.theme.InputGrey
 
@@ -40,6 +39,9 @@ fun AddOrderScreen(
     var showRawText by remember { mutableStateOf(false) }
     var rawText by remember { mutableStateOf("") }
 
+    // Показывать встроенную камеру поверх формы
+    var showStsCamera by remember { mutableStateOf(false) }
+
     val message by viewModel.message.collectAsState()
     val resetSignal by viewModel.resetForm.collectAsState()
     val isScanning by viewModel.isScanning.collectAsState()
@@ -53,14 +55,6 @@ fun AddOrderScreen(
         if (uri != null) viewModel.scanDocument(uri)
     }
 
-    // Камера
-    val takePicture = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicture()
-    ) { success ->
-        if (success) viewModel.onStsPhotoTaken()
-    }
-
-    // Подстановка черновика
     LaunchedEffect(draft) {
         draft?.let { d ->
             d.licensePlate?.let { licensePlate = it }
@@ -111,187 +105,189 @@ fun AddOrderScreen(
             )
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .padding(16.dp)
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // ---------- СКАНИРОВАНИЕ СТС ----------
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedButton(
-                    onClick = {
-                        val uri = viewModel.prepareStsCameraUri()
-                        takePicture.launch(uri)
+        Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+            if (showStsCamera) {
+                // ---------- ВСТРОЕННАЯ КАМЕРА ----------
+                StsCameraScreen(
+                    createFile = { viewModel.newStsFile() },
+                    onCaptured = { file ->
+                        showStsCamera = false
+                        viewModel.scanStsFile(file)
                     },
-                    enabled = !isScanning,
-                    modifier = Modifier.weight(1f).height(56.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.onSurface
-                    )
+                    onGallery = {
+                        showStsCamera = false
+                        pickImage.launch("image/*")
+                    },
+                    onClose = { showStsCamera = false }
+                )
+            } else {
+                // ---------- ФОРМА ----------
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Icon(Icons.Default.PhotoCamera, contentDescription = null)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Камера")
-                }
-                OutlinedButton(
-                    onClick = { pickImage.launch("image/*") },
-                    enabled = !isScanning,
-                    modifier = Modifier.weight(1f).height(56.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.onSurface
-                    )
-                ) {
-                    Icon(Icons.Default.PhotoLibrary, contentDescription = null)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Галерея")
-                }
-            }
-
-            if (isScanning) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                Text("Распознаю документ…", style = MaterialTheme.typography.bodySmall)
-            }
-
-            if (scannedYear != null || rawText.isNotBlank()) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Text(
-                            "Распознано из документа",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                    // Кнопка открытия встроенной камеры
+                    OutlinedButton(
+                        onClick = { showStsCamera = true },
+                        enabled = !isScanning,
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.onSurface
                         )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        if (scannedYear != null) {
-                            Text(
-                                "Год выпуска: $scannedYear",
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontWeight = FontWeight.Bold
+                    ) {
+                        if (isScanning) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp
                             )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Распознаю документ…")
+                        } else {
+                            Icon(Icons.Default.PhotoCamera, contentDescription = null)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Сканировать СТС (камера / галерея)")
                         }
-                        TextButton(
-                            onClick = { showRawText = !showRawText },
-                            contentPadding = PaddingValues(0.dp)
+                    }
+
+                    if (scannedYear != null || rawText.isNotBlank()) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
                         ) {
-                            Text(if (showRawText) "Скрыть текст" else "Показать распознанный текст")
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Text(
+                                    "Распознано из документа",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                if (scannedYear != null) {
+                                    Text(
+                                        "Год выпуска: $scannedYear",
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                TextButton(
+                                    onClick = { showRawText = !showRawText },
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text(
+                                        if (showRawText) "Скрыть текст"
+                                        else "Показать распознанный текст"
+                                    )
+                                }
+                                if (showRawText) {
+                                    Text(
+                                        rawText,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Text(
+                                    "Проверьте поля ниже — система учится на ваших правках.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
-                        if (showRawText) {
-                            Text(
-                                rawText,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+
+                    Text(
+                        "Данные клиента",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    CustomTextField(
+                        value = clientName,
+                        onValueChange = { clientName = it },
+                        label = "ФИО клиента",
+                        keyboardType = KeyboardType.Text
+                    )
+                    CustomTextField(
+                        value = clientPhone,
+                        onValueChange = { clientPhone = it },
+                        label = "Телефон",
+                        keyboardType = KeyboardType.Phone
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Данные автомобиля",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    CustomTextField(
+                        value = carMake,
+                        onValueChange = { carMake = it },
+                        label = "Марка (напр. Lada)",
+                        keyboardType = KeyboardType.Text
+                    )
+                    CustomTextField(
+                        value = carModel,
+                        onValueChange = { carModel = it },
+                        label = "Модель (напр. Vesta)",
+                        keyboardType = KeyboardType.Text
+                    )
+                    CustomTextField(
+                        value = licensePlate,
+                        onValueChange = { licensePlate = it },
+                        label = "Госномер (А123ВС 77)",
+                        keyboardType = KeyboardType.Text
+                    )
+                    CustomTextField(
+                        value = vin,
+                        onValueChange = { vin = it },
+                        label = "VIN",
+                        keyboardType = KeyboardType.Text
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Смета",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    CustomTextField(
+                        value = estimate,
+                        onValueChange = { estimate = it.filter { c -> c.isDigit() } },
+                        label = "Сумма в рублях",
+                        keyboardType = KeyboardType.Number
+                    )
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Button(
+                        onClick = {
+                            val estimateCents = (estimate.toLongOrNull() ?: 0L) * 100
+                            viewModel.createOrder(
+                                clientName, clientPhone, carMake, carModel,
+                                licensePlate, vin, estimateCents, scannedYear,
+                                ocrDraft = draft
                             )
-                        }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        enabled = clientName.isNotBlank() &&
+                                licensePlate.isNotBlank() && !isScanning,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = IndigoPrimary)
+                    ) {
                         Text(
-                            "Проверьте поля ниже — система учится на ваших правках.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary
+                            "Создать заказ",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(24.dp))
                 }
             }
-
-            // ---------- КЛИЕНТ ----------
-            Text(
-                "Данные клиента",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            CustomTextField(
-                value = clientName,
-                onValueChange = { clientName = it },
-                label = "ФИО клиента",
-                keyboardType = KeyboardType.Text
-            )
-            CustomTextField(
-                value = clientPhone,
-                onValueChange = { clientPhone = it },
-                label = "Телефон",
-                keyboardType = KeyboardType.Phone
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "Данные автомобиля",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            CustomTextField(
-                value = carMake,
-                onValueChange = { carMake = it },
-                label = "Марка (напр. Lada)",
-                keyboardType = KeyboardType.Text
-            )
-            CustomTextField(
-                value = carModel,
-                onValueChange = { carModel = it },
-                label = "Модель (напр. Vesta)",
-                keyboardType = KeyboardType.Text
-            )
-            CustomTextField(
-                value = licensePlate,
-                onValueChange = { licensePlate = it },
-                label = "Госномер (А123ВС 77)",
-                keyboardType = KeyboardType.Text
-            )
-            CustomTextField(
-                value = vin,
-                onValueChange = { vin = it },
-                label = "VIN",
-                keyboardType = KeyboardType.Text
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "Смета",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            CustomTextField(
-                value = estimate,
-                onValueChange = { estimate = it.filter { char -> char.isDigit() } },
-                label = "Сумма в рублях",
-                keyboardType = KeyboardType.Number
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Button(
-                onClick = {
-                    val estimateCents = (estimate.toLongOrNull() ?: 0L) * 100
-                    viewModel.createOrder(
-                        clientName, clientPhone, carMake, carModel,
-                        licensePlate, vin, estimateCents, scannedYear,
-                        ocrDraft = draft
-                    )
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                enabled = clientName.isNotBlank() && licensePlate.isNotBlank() && !isScanning,
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = IndigoPrimary)
-            ) {
-                Text(
-                    "Создать заказ",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
