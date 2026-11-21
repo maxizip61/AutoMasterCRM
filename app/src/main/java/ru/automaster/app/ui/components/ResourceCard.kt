@@ -19,7 +19,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import ru.automaster.app.domain.model.displayName
 import ru.automaster.app.ui.screens.dashboard.PostState
 import ru.automaster.app.ui.theme.*
 
@@ -27,7 +29,8 @@ import ru.automaster.app.ui.theme.*
 fun ResourceCard(
     postState: PostState,
     modifier: Modifier = Modifier,
-    onDetailsClick: (Long) -> Unit = {} // <-- НОВЫЙ ПАРАМЕТР
+    onDetailsClick: (Long) -> Unit = {},
+    onAcceptClick: () -> Unit = {}
 ) {
     val isBusy = postState.activeStage != null
 
@@ -44,7 +47,6 @@ fun ResourceCard(
         label = "cardColor"
     )
 
-    // Темная стеклянная карточка
     Box(
         modifier = modifier
             .height(160.dp)
@@ -57,33 +59,36 @@ fun ResourceCard(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Шапка карточки
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
                     Icon(
-                        imageVector = if (postState.post.name.name.contains("PAINT")) Icons.Default.Build else Icons.Default.Home,
+                        imageVector = if (postState.post.name.name.contains("PAINT"))
+                            Icons.Default.Build else Icons.Default.Home,
                         contentDescription = null,
                         tint = Color.White,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = postState.post.name.name.replace("_", " "),
+                        text = postState.post.displayName.ifEmpty {
+                            postState.post.name.name.replace("_", " ")
+                        },
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleMedium
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                // Цветная таблетка статуса
-                Surface(
-                    color = animatedColor,
-                    shape = RoundedCornerShape(12.dp)
-                ) {
+                Surface(color = animatedColor, shape = RoundedCornerShape(12.dp)) {
                     Text(
                         text = if (isBusy) "В работе" else "Свободен",
                         color = Color.White,
@@ -94,16 +99,21 @@ fun ResourceCard(
                 }
             }
 
-            // Контент
             Column {
                 if (isBusy) {
                     Text(
-                        text = postState.activeStage?.phase?.name ?: "",
+                        text = postState.activeStage?.phase?.displayName() ?: "",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
-                    Text("Заказ #${postState.activeStage?.orderId ?: "?"}", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+                    Text(
+                        "Заказ #${postState.activeStage?.orderId ?: "?"}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.Gray
+                    )
                 } else {
                     Text(
                         text = "Готов к приему",
@@ -115,18 +125,16 @@ fun ResourceCard(
 
             Button(
                 onClick = {
-                    if (isBusy) {
-                        postState.activeStage?.let { onDetailsClick(it.orderId) }
-                    }
+                    if (isBusy) postState.activeStage?.let { onDetailsClick(it.orderId) }
+                    else onAcceptClick()
                 },
                 modifier = Modifier.align(Alignment.End),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (isBusy) animatedColor else IndigoPrimary
                 ),
-                shape = RoundedCornerShape(12.dp),
-                enabled = isBusy // Кнопка активна только если пост занят
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Text(if (isBusy) "Детали" else "Свободен", color = Color.White)
+                Text(if (isBusy) "Детали" else "Принять машину", color = Color.White)
             }
         }
     }

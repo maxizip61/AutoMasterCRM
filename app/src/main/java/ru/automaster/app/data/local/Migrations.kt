@@ -159,3 +159,53 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
         )
     }
 }
+
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        Log.i(TAG, "Миграция 6 → 7: оценка по фото")
+        db.addColumnIfMissing("order_works", "panel", "TEXT")
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `damage_assessments` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `carMake` TEXT NOT NULL, `carModel` TEXT NOT NULL, `carClass` TEXT NOT NULL,
+                `source` TEXT NOT NULL, `status` TEXT NOT NULL, `orderId` INTEGER,
+                `totalMinCents` INTEGER NOT NULL, `totalMaxCents` INTEGER NOT NULL,
+                `photoPaths` TEXT NOT NULL, `createdAt` INTEGER NOT NULL,
+                FOREIGN KEY(`orderId`) REFERENCES `orders`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_damage_assessments_orderId` ON `damage_assessments` (`orderId`)")
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `damage_items` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `assessmentId` INTEGER NOT NULL, `panel` TEXT NOT NULL, `damageType` TEXT NOT NULL,
+                `laborMinCents` INTEGER NOT NULL, `laborMaxCents` INTEGER NOT NULL,
+                `materialsCents` INTEGER NOT NULL, `totalMinCents` INTEGER NOT NULL,
+                `totalMaxCents` INTEGER NOT NULL, `actualCents` INTEGER, `createdAt` INTEGER NOT NULL,
+                FOREIGN KEY(`assessmentId`) REFERENCES `damage_assessments`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_damage_items_assessmentId` ON `damage_items` (`assessmentId`)")
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `panel_price_book` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `panel` TEXT NOT NULL, `damageType` TEXT NOT NULL, `workType` TEXT NOT NULL,
+                `baseLaborCents` INTEGER NOT NULL, `samplesCount` INTEGER NOT NULL,
+                `source` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_panel_price_book_panel_damageType_workType` " +
+                    "ON `panel_price_book` (`panel`, `damageType`, `workType`)"
+        )
+    }
+}

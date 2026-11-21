@@ -71,12 +71,10 @@ class DashboardViewModel @Inject constructor(
     orderDao: OrderDao,
     private val paymentDao: PaymentDao,
     private val expenseDao: ExpenseDao,
-    private val salaryPaymentDao: SalaryPaymentDao,
-    private val orderEmployeeAccrualDao: OrderEmployeeAccrualDao
+    private val salaryPaymentDao: SalaryPaymentDao
 ) : ViewModel() {
 
     private val _profitPeriod = MutableStateFlow(ProfitPeriod.DAY)
-    val profitPeriod: StateFlow<ProfitPeriod> = _profitPeriod.asStateFlow()
 
     fun setProfitPeriod(period: ProfitPeriod) {
         _profitPeriod.value = period
@@ -120,11 +118,13 @@ class DashboardViewModel @Inject constructor(
             val start = date.atStartOfDay(zone).toInstant()
             val end = date.plusDays(1).atStartOfDay(zone).toInstant()
 
-            val paymentsFlow = paymentDao.getPaymentsInRangeFlow(start, end)
-            val expensesFlow = expenseDao.getExpensesInRangeFlow(start, end)
-
-            combine(paymentsFlow, expensesFlow) { payments, expenses ->
-                val income = payments.sumOf { if (it.type == PaymentType.REFUND) -it.amountCents else it.amountCents }
+            combine(
+                paymentDao.getPaymentsInRangeFlow(start, end),
+                expenseDao.getExpensesInRangeFlow(start, end)
+            ) { payments, expenses ->
+                val income = payments.sumOf {
+                    if (it.type == PaymentType.REFUND) -it.amountCents else it.amountCents
+                }
                 val outcome = expenses.sumOf { it.amountCents }
                 income to outcome
             }
@@ -136,11 +136,11 @@ class DashboardViewModel @Inject constructor(
             val zone = ZoneId.systemDefault()
             val (start, end) = period.getRange(date, zone)
 
-            val paymentsFlow = paymentDao.getPaymentsInRangeFlow(start, end)
-            val expensesFlow = expenseDao.getExpensesInRangeFlow(start, end)
-            val salaryFlow = salaryPaymentDao.getAll()
-
-            combine(paymentsFlow, expensesFlow, salaryFlow) { payments, expenses, salaries ->
+            combine(
+                paymentDao.getPaymentsInRangeFlow(start, end),
+                expenseDao.getExpensesInRangeFlow(start, end),
+                salaryPaymentDao.getAll()
+            ) { payments, expenses, salaries ->
                 val revenue = payments
                     .filter { it.type == PaymentType.PAYMENT }
                     .sumOf { it.amountCents }
@@ -157,8 +157,8 @@ class DashboardViewModel @Inject constructor(
                     .filter { it.date >= start && it.date < end }
                     .sumOf { it.amountCents }
 
-                // УСН 6% от выручки (упрощённо, без учёта вычетов взносов)
-                val tax = (revenue * 6 / 100)
+                // УСН 6% с выручки (упрощённо, без вычета взносов)
+                val tax = revenue * 6 / 100
 
                 ProfitBreakdown(
                     revenueCents = revenue,

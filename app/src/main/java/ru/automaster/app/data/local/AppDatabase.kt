@@ -17,9 +17,10 @@ import ru.automaster.app.data.local.entity.*
         MaterialUsageEntity::class, StatusHistoryEntity::class, PhotoEntity::class,
         FileDeletionTaskEntity::class, EmployeeEntity::class, OrderEmployeeAssignmentEntity::class,
         OrderEmployeeAccrualEntity::class, SalaryPaymentEntity::class, TaxPaymentEntity::class,
-        WorkScheduleEntity::class, OrderWorkEntity::class, OcrCorrectionEntity::class
+        WorkScheduleEntity::class, OrderWorkEntity::class, OcrCorrectionEntity::class,
+        DamageAssessmentEntity::class, DamageItemEntity::class, PanelPriceBookEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -44,12 +45,14 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun fileDeletionTaskDao(): FileDeletionTaskDao
     abstract fun orderWorkDao(): OrderWorkDao
     abstract fun ocrCorrectionDao(): OcrCorrectionDao
+    abstract fun estimateDao(): EstimateDao
 
     companion object {
         @Volatile
         private var INSTANCE: AppDatabase? = null
         val ALL_MIGRATIONS = arrayOf<Migration>(
-            MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6
+            MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
+            MIGRATION_5_6, MIGRATION_6_7
         )
 
         fun getDatabase(context: Context): AppDatabase {

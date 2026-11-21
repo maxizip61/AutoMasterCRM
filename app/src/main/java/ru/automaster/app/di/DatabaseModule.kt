@@ -45,4 +45,6 @@ object DatabaseModule {
 
     // ---------- НОВЫЙ: провайдер для обучающего слоя OCR ----------
     @Provides fun provideOcrCorrectionDao(db: AppDatabase): OcrCorrectionDao = db.ocrCorrectionDao()
+
+    @Provides fun provideEstimateDao(db: AppDatabase): EstimateDao = db.estimateDao()
 }

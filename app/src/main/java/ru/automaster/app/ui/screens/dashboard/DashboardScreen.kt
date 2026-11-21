@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import ru.automaster.app.domain.model.displayName
 import ru.automaster.app.ui.components.MoneyFormatter
 import ru.automaster.app.ui.components.PremiumGlassBackground
 import ru.automaster.app.ui.components.ResourceCard
@@ -158,8 +159,9 @@ fun DashboardScreen(
                         items(state.posts, key = { it.post.id }) { postState ->
                             ResourceCard(
                                 postState = postState,
-                                modifier = Modifier.width(280.dp),
-                                onDetailsClick = { orderId -> onNavigateToOrderDetails(orderId) }
+                                modifier = Modifier.width(260.dp),
+                                onDetailsClick = { orderId -> onNavigateToOrderDetails(orderId) },
+                                onAcceptClick = onNavigateToAddOrder
                             )
                         }
                     }

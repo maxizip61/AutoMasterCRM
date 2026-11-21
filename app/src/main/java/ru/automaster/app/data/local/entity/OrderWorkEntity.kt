@@ -22,5 +22,7 @@ data class OrderWorkEntity(
     val type: WorkType,
     val costCents: Long,
     val assignedEmployeeId: Long? = null,
-    val createdAt: Instant
+    val createdAt: Instant,
+    /** Зона кузова (для обучения оценки по фото). null = не размечено. */
+    val panel: String? = null
 )
