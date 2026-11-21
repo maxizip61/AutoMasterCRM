@@ -10,6 +10,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import ru.automaster.app.ui.screens.dashboard.DashboardScreen
+import ru.automaster.app.ui.screens.estimate.EstimateScreen
 import ru.automaster.app.ui.screens.finance.FinanceScreen
 import ru.automaster.app.ui.screens.order_detail.OrderDetailsScreen
 import ru.automaster.app.ui.screens.orders.AddOrderScreen
@@ -54,18 +55,17 @@ fun AppNavHost(
             ) + fadeOut(animationSpec = tween(Motion.Medium))
         }
     ) {
-        // 1. Главный экран
         composable(Screen.Dashboard.route) {
             DashboardScreen(
                 onNavigateToAddOrder = { navController.navigate(Screen.AddOrder.route) },
                 onNavigateToOrderDetails = { orderId ->
                     navController.navigate(Screen.OrderDetails.createRoute(orderId))
                 },
-                onNavigateToSettings = { navController.navigate(Screen.Settings.route) }
+                onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
+                onNavigateToEstimate = { navController.navigate(Screen.Estimate.route) }
             )
         }
 
-        // 2. Экран всех заказов
         composable(Screen.Orders.route) {
             OrdersScreen(
                 onNavigateToOrderDetails = { orderId ->
@@ -75,46 +75,34 @@ fun AppNavHost(
             )
         }
 
-        // 3. Финансы
-        composable(Screen.Finance.route) {
-            FinanceScreen()
-        }
+        composable(Screen.Finance.route) { FinanceScreen() }
+        composable(Screen.Taxes.route) { TaxScreen() }
+        composable(Screen.Payroll.route) { PayrollScreen() }
 
-        // 4. Налоги
-        composable(Screen.Taxes.route) {
-            TaxScreen()
-        }
-
-        // 5. Зарплата
-        composable(Screen.Payroll.route) {
-            PayrollScreen()
-        }
-
-        // 6. Настройки
         composable(Screen.Settings.route) {
             SettingsScreen(
                 onNavigateToBackup = { navController.navigate(Screen.Backup.route) }
             )
         }
 
-        // 7. Бэкапы
         composable(Screen.Backup.route) {
             BackupScreen(onNavigateBack = { navController.popBackStack() })
         }
 
-        // 8. Создание заказа
         composable(Screen.AddOrder.route) {
             AddOrderScreen(onNavigateBack = { navController.popBackStack() })
         }
 
-        // 9. Детали заказа
+        // Оценка ремонта по фото
+        composable(Screen.Estimate.route) {
+            EstimateScreen(onNavigateBack = { navController.popBackStack() })
+        }
+
         composable(
             route = Screen.OrderDetails.route,
             arguments = listOf(navArgument("orderId") { type = NavType.LongType })
         ) {
-            OrderDetailsScreen(
-                onNavigateBack = { navController.popBackStack() }
-            )
+            OrderDetailsScreen(onNavigateBack = { navController.popBackStack() })
         }
     }
 }

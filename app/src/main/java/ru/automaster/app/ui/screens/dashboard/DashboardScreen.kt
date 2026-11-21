@@ -31,6 +31,7 @@ import ru.automaster.app.ui.components.PremiumGlassBackground
 import ru.automaster.app.ui.components.ResourceCard
 import ru.automaster.app.ui.components.glassCard
 import ru.automaster.app.ui.theme.GraphiteDark
+import androidx.compose.material.icons.filled.PhotoCamera
 import ru.automaster.app.ui.theme.IndigoPrimary
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,6 +40,7 @@ fun DashboardScreen(
     onNavigateToAddOrder: () -> Unit,
     onNavigateToOrderDetails: (Long) -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToEstimate: () -> Unit,
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -50,11 +52,17 @@ fun DashboardScreen(
                 TopAppBar(
                     title = { Text("Дашборд", fontWeight = FontWeight.Bold, color = Color.White) },
                     actions = {
+                        IconButton(onClick = onNavigateToEstimate) {
+                            Icon(
+                                Icons.Default.PhotoCamera,
+                                contentDescription = "Оценка по фото",
+                                tint = Color.White
+                            )
+                        }
                         IconButton(onClick = onNavigateToSettings) {
                             Icon(Icons.Default.Settings, contentDescription = "Настройки", tint = Color.White)
                         }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                    }, colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                 )
             },
             floatingActionButton = {
