@@ -23,10 +23,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import kotlinx.coroutines.Dispatchers
@@ -34,9 +34,9 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * Р’СЃС‚СЂРѕРµРЅРЅР°СЏ РєР°РјРµСЂР° РґР»СЏ СЃСЉС‘РјРєРё РЎРўРЎ.
- * Р–РёРІРѕР№ РїСЂРµРІСЊСЋ + РєРЅРѕРїРєР° СЃРїСѓСЃРєР° + РєРЅРѕРїРєР° РіР°Р»РµСЂРµРё РІРЅСѓС‚СЂРё СЌРєСЂР°РЅР°.
- * РџРёС€РµС‚ С„Р°Р№Р» РЅР°РїСЂСЏРјСѓСЋ, Р±РµР· FileProvider вЂ” РїРѕСЌС‚РѕРјСѓ РЅРµ РїР°РґР°РµС‚.
+ * Встроенная камера для съёмки СТС.
+ * Живой превью + кнопка спуска + кнопка галереи внутри экрана.
+ * Пишет файл напрямую, без FileProvider — поэтому не падает.
  */
 @Composable
 fun StsCameraScreen(
@@ -72,7 +72,6 @@ fun StsCameraScreen(
     var cameraError by remember { mutableStateOf<String?>(null) }
     var isCapturing by remember { mutableStateOf(false) }
 
-    // РџСЂРёРІСЏР·РєР° РєР°РјРµСЂС‹ Рє Р¶РёР·РЅРµРЅРЅРѕРјСѓ С†РёРєР»Сѓ РїРѕСЃР»Рµ РїРѕР»СѓС‡РµРЅРёСЏ СЂР°Р·СЂРµС€РµРЅРёСЏ
     LaunchedEffect(hasPermission, previewView) {
         if (!hasPermission) return@LaunchedEffect
         val view = previewView ?: return@LaunchedEffect
@@ -93,11 +92,10 @@ fun StsCameraScreen(
             cameraError = null
         } catch (e: Exception) {
             Log.e("StsCamera", "bind failed", e)
-            cameraError = "РќРµ СѓРґР°Р»РѕСЃСЊ РІРєР»СЋС‡РёС‚СЊ РєР°РјРµСЂСѓ: ${e.message}"
+            cameraError = "Не удалось включить камеру: ${e.message}"
         }
     }
 
-    // РћСЃРІРѕР±РѕР¶РґР°РµРј РєР°РјРµСЂСѓ РїСЂРё РІС‹С…РѕРґРµ СЃ СЌРєСЂР°РЅР°
     DisposableEffect(Unit) {
         onDispose {
             runCatching {
@@ -107,7 +105,6 @@ fun StsCameraScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        // РџСЂРµРІСЊСЋ
         AndroidView(
             factory = { ctx ->
                 PreviewView(ctx).apply {
@@ -118,7 +115,6 @@ fun StsCameraScreen(
             modifier = Modifier.fillMaxSize()
         )
 
-        // Р’РµСЂС…РЅСЏСЏ РїР°РЅРµР»СЊ
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -129,22 +125,21 @@ fun StsCameraScreen(
             IconButton(onClick = onClose) {
                 Icon(
                     Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Р—Р°РєСЂС‹С‚СЊ",
+                    contentDescription = "Закрыть",
                     tint = Color.White
                 )
             }
             Text(
-                "РЎРЅРёРјРѕРє РЎРўРЎ",
+                "Снимок СТС",
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(start = 8.dp)
             )
         }
 
-        // РџРѕРґСЃРєР°Р·РєР°
         if (hasPermission && cameraError == null) {
             Text(
-                "РџРѕР»РѕР¶РёС‚Рµ РЎРўРЎ СЂРѕРІРЅРѕ, РїСЂРё С…РѕСЂРѕС€РµРј СЃРІРµС‚Рµ",
+                "Положите СТС ровно, при хорошем свете",
                 color = Color.White.copy(alpha = 0.8f),
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier
@@ -153,14 +148,13 @@ fun StsCameraScreen(
             )
         }
 
-        // РћС€РёР±РєР° РёР»Рё РЅРµС‚ СЂР°Р·СЂРµС€РµРЅРёСЏ
         if (!hasPermission || cameraError != null) {
             Column(
                 modifier = Modifier.align(Alignment.Center).padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    cameraError ?: "РќРµС‚ РґРѕСЃС‚СѓРїР° Рє РєР°РјРµСЂРµ",
+                    cameraError ?: "Нет доступа к камере",
                     color = Color.White,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -169,14 +163,13 @@ fun StsCameraScreen(
                     if (!hasPermission) {
                         Button(onClick = {
                             permissionLauncher.launch(Manifest.permission.CAMERA)
-                        }) { Text("Р”Р°С‚СЊ РґРѕСЃС‚СѓРї") }
+                        }) { Text("Дать доступ") }
                     }
-                    OutlinedButton(onClick = onGallery) { Text("РР· РіР°Р»РµСЂРµРё") }
+                    OutlinedButton(onClick = onGallery) { Text("Из галереи") }
                 }
             }
         }
 
-        // РќРёР¶РЅСЏСЏ РїР°РЅРµР»СЊ: РіР°Р»РµСЂРµСЏ | СЃРїСѓСЃРє | (РїСѓСЃС‚Рѕ РґР»СЏ Р±Р°Р»Р°РЅСЃР°)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -186,22 +179,18 @@ fun StsCameraScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Р“Р°Р»РµСЂРµСЏ РІРЅСѓС‚СЂРё РєР°РјРµСЂС‹
             IconButton(
                 onClick = onGallery,
                 modifier = Modifier.size(52.dp),
-                colors = IconButtonDefaults.iconButtonColors(
-                    contentColor = Color.White
-                )
+                colors = IconButtonDefaults.iconButtonColors(contentColor = Color.White)
             ) {
                 Icon(
                     Icons.Default.PhotoLibrary,
-                    contentDescription = "Р’С‹Р±СЂР°С‚СЊ РёР· РіР°Р»РµСЂРµРё",
+                    contentDescription = "Выбрать из галереи",
                     modifier = Modifier.size(28.dp)
                 )
             }
 
-            // РљРЅРѕРїРєР° СЃРїСѓСЃРєР°
             FloatingActionButton(
                 onClick = {
                     if (isCapturing) return@FloatingActionButton
@@ -209,7 +198,7 @@ fun StsCameraScreen(
                     val file = runCatching { createFile() }.getOrNull()
                     if (file == null) {
                         isCapturing = false
-                        cameraError = "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ С„Р°Р№Р» СЃРЅРёРјРєР°"
+                        cameraError = "Не удалось создать файл снимка"
                         return@FloatingActionButton
                     }
                     val opts = ImageCapture.OutputFileOptions.Builder(file).build()
@@ -217,16 +206,14 @@ fun StsCameraScreen(
                         opts,
                         ContextCompat.getMainExecutor(context),
                         object : ImageCapture.OnImageSavedCallback {
-                            override fun onImageSaved(
-                                r: ImageCapture.OutputFileResults
-                            ) {
+                            override fun onImageSaved(r: ImageCapture.OutputFileResults) {
                                 isCapturing = false
                                 onCaptured(file)
                             }
 
                             override fun onError(e: ImageCaptureException) {
                                 isCapturing = false
-                                cameraError = "РћС€РёР±РєР° СЃСЉС‘РјРєРё: ${e.message}"
+                                cameraError = "Ошибка съёмки: ${e.message}"
                                 file.delete()
                             }
                         }
@@ -238,13 +225,12 @@ fun StsCameraScreen(
             ) {
                 Icon(
                     Icons.Default.PhotoCamera,
-                    contentDescription = "РЎРґРµР»Р°С‚СЊ СЃРЅРёРјРѕРє",
+                    contentDescription = "Сделать снимок",
                     tint = Color.Black,
                     modifier = Modifier.size(34.dp)
                 )
             }
 
-            // РџСѓСЃС‚С‹С€РєР° РґР»СЏ С†РµРЅС‚СЂРёСЂРѕРІР°РЅРёСЏ СЃРїСѓСЃРєР°
             Spacer(modifier = Modifier.size(52.dp))
         }
     }
